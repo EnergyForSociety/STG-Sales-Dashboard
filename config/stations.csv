@@ -1,0 +1,38 @@
+company,dept_code,station_id,station_name,unit_name,business_group,brand,expected_source,station_type,mapping_status,note
+STG,0002,STG-02,ลิ้มบางปะหัน,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0003,STG-03,ทรัพย์รุ่งเรือง,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0004,STG-04,บิ๊กแก๊ส,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0005,STG-05,ซันไชน์,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0006,STG-06,ลิ้มวังน้อย,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0007,STG-07,ลิ้มอโยธยา,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0011,STG-11,ลิ้มเสนา,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0012,STG-12,มังกรสยาม,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0013,STG-13,ธูปะเตมีย์,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0014,STG-14,คลองหลวง,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0015,STG-15,บางบาล,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0017,STG-17,เจ.อาร์.,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0019,STG-19,ลิ้มสุวินทวงศ์,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0024,STG-24,สยามสิริวาณิชย์,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0025,STG-25,นำพารวย,LPG,LPG,PT GAS,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STG,0018,STG-18,รุ่งเรือง,LPG,LPG,PT GAS,ไม่มี,ปิดแล้ว,ยืนยันโดยผู้ใช้ 12 พ.ย. 2569: ปิดแล้ว — ไม่นับ,
+STG,0008,STG-RAMA5,พระราม 5,น้ำมัน PTT,น้ำมัน,PTT,คีย์โดยบัญชี,สถานี,ยืนยันจาก master_Department (พระราม 5-Oil),
+STG,0009,STG-RAMA5,พระราม 5,Café Amazon,Non-Oil,Café Amazon,คีย์โดยบัญชี,หน่วยธุรกิจในสถานี,ยืนยันจาก master_Department (พระราม 5-Amazon),
+STG,0010,STG-RAMA5,พระราม 5,7-Eleven,Non-Oil,7-Eleven,คีย์โดยบัญชี,หน่วยธุรกิจในสถานี,ยืนยันจาก master_Department (พระราม 5-7-11),ยอดใน TRCloud เป็นค่าบริหารจัดการรายเดือน ไม่ใช่ยอดขายหน้าร้าน 7-Eleven
+STG,0022,STG-PIBUL,พิบูลสงคราม,น้ำมัน PTT,น้ำมัน,PTT,คีย์โดยบัญชี,สถานี,ยืนยันจาก master_Department,
+STG,0023,STG-PIBUL,พิบูลสงคราม,Café Amazon,Non-Oil,Café Amazon,คีย์โดยบัญชี,หน่วยธุรกิจในสถานี,ยืนยันจาก master_Department (พิบูลสงคราม-Amazon),
+STG,362,STG-WHOLESALE,ธุรกิจค้าส่ง LPG,ค้าส่ง LPG,LPG,PT GAS,คีย์โดยบัญชี,ไม่ใช่สถานี,ยืนยันจาก master_Department (แผนก 362 ธุรกิจค้าส่ง),แผนกค้าส่ง ไม่นับเป็นสถานี
+STG,0000,STG-HQ,สำนักงานใหญ่ STG,ไม่ระบุสถานี,,,คีย์โดยบัญชี,ไม่ใช่สถานี,ยืนยันจาก master_Department,รายการระดับบริษัทที่ไม่ได้ระบุสถานี
+STG,,STG-NA,ไม่ระบุแผนก (STG),ไม่ระบุสถานี,,,ไม่ทราบ,ไม่ใช่สถานี,รอตรวจสอบ,บรรทัดที่ department ว่าง
+STP,0001,STP-01,เจ้าปลุก,น้ำมัน PT,น้ำมัน,PT,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STP,0002,STP-02,เขาจีนแล,น้ำมัน PT,น้ำมัน,PT,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STP,0004,STP-04,สนามบินตาก,น้ำมัน PT,น้ำมัน,PT,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STP,0005,STP-05,ตาก-ลำปาง,น้ำมัน PT,น้ำมัน,PT,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STP,0007,STP-07,นครหลวง,น้ำมัน PT,น้ำมัน,PT,API POS,สถานี,ยืนยันจาก master_Department + ทะเบียนสถานี,
+STP,0003,STP-03,ขาณุ,น้ำมัน PT,น้ำมัน,PT,ไม่มี,ขายกิจการแล้ว,ยืนยัน: Tbl_TRC_Branch BranchCode = 0 (ขายกิจการแล้ว) — ไม่นับ,ตามคู่มือ POS หัวข้อ 2
+STP,0006,STP-06,คลองขลุง,น้ำมัน PT,น้ำมัน,PT,ไม่มี,ขายกิจการแล้ว,ยืนยัน: Tbl_TRC_Branch BranchCode = 0 (ขายกิจการแล้ว) — ไม่นับ,ตามคู่มือ POS หัวข้อ 2
+STP,0000,STP-HQ,สำนักงานใหญ่ STP,ไม่ระบุสถานี,,,คีย์โดยบัญชี,ไม่ใช่สถานี,ยืนยันจาก master_Department,
+TWP,IN,TWP-IN,NGV ขาเข้า,NGV,NGV,PTT,คีย์โดยบัญชี,สถานี,ยืนยันจาก master_Department (NGV-ขาเข้า),ทะเบียนระบุขาเข้าเป็น NGV + PTT OIL
+TWP,OUT,TWP-OUT,NGV ขาออก,NGV,NGV,PTT,คีย์โดยบัญชี,สถานี,ยืนยันจาก master_Department (NGV-ขาออก),
+TWP,OIL,TWP-IN,NGV ขาเข้า,น้ำมัน PTT,น้ำมัน,PTT,คีย์โดยบัญชี,หน่วยธุรกิจในสถานี,รอยืนยัน: master_Department ระบุแผนก OIL = น้ำมัน; ผูกกับสถานีขาเข้าตามทะเบียน (NGV + PTT OIL),
+TWP,0000,TWP-HQ,สำนักงานใหญ่ TWP,ไม่ระบุสถานี,,,คีย์โดยบัญชี,ไม่ใช่สถานี,ยืนยันจาก master_Department,ยอด NGV ขายลูกค้าขนส่งส่วนใหญ่ลงแผนกนี้ จึงแยกขาเข้า/ขาออกไม่ได้
+TWP,,TWP-NA,ไม่ระบุแผนก (TWP),ไม่ระบุสถานี,,,ไม่ทราบ,ไม่ใช่สถานี,รอตรวจสอบ,บรรทัดที่ department ว่าง

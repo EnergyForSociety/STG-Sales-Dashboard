@@ -1,0 +1,26 @@
+# === ข้อมูลบริษัท / ความลับ — ห้ามขึ้น Git (ดู docs/SECURITY-DEPLOY.md) ===
+raw/
+data/*
+!data/.gitkeep
+keys/
+*key*.txt
+*.key
+.env
+.env.*
+!.env.example
+# เอกสารที่มียอดรายสาขา/รายลูกค้า หรือข้อมูลเครือข่ายภายใน
+docs/ISSUES.md
+docs/Sales-Executive-Dashboard-Playbook.md
+docs/PT-Database-Reference.md
+docs/validation_results.md
+docs/data_issues.md
+# อื่น ๆ
+node_modules/
+screenshots/
+*.log
+__pycache__/
+.DS_Store
+Thumbs.db
+
+# ไฟล์ดีไซน์จาก Claude Design มีตัวเลขจริง (ไม่เข้ารหัส) — ห้าม commit
+design/

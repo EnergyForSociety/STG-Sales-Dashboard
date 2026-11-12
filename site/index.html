@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>STAR · Sales Executive Dashboard</title>
+<link rel="stylesheet" href="styles.css?v=mweofm5h">
+<link rel="stylesheet" href="gate.css?v=mweofm5h">
+</head>
+<body>
+<div class="lock" id="lock">
+  <div class="lock-box">
+    <div class="logo-zone"><img class="logo" src="assets/ae-logo.png" width="175" height="44" alt="All Energy & Utilities"><div class="brand-txt"><b>STAR</b><span>ธุรกิจสถานีบริการ</span></div></div>
+    <form onsubmit="return false">
+      <h1>STAR · Sales Executive Dashboard</h1>
+      <p>ธุรกิจสถานีบริการ STG · STP · TWP · รายงานภายใน</p>
+      <p>เข้าสู่ระบบด้วยบัญชี Microsoft 365 ของบริษัท</p>
+      <button class="btn" id="go" type="button" disabled>กำลังตรวจสอบ…</button>
+      <button class="btn ghost" id="out" type="button" hidden>ออกจากระบบ / ลองบัญชีอื่น</button>
+      <p class="err" id="err" role="alert"></p>
+    </form>
+  </div>
+</div>
+<div class="app" id="dash-root" hidden>
+  <div class="hdr-user" id="hdr-user"><div class="userbar" id="userbar" hidden><span id="who"></span><button type="button" id="logout">ออกจากระบบ</button></div></div>
+  <div id="dc-root" aria-live="polite"></div>
+</div>
+<script>window.DASH_STATIC = 1;</script>
+<script src="vendor/msal-browser.min.js?v=mweofm5h"></script>
+<script src="auth-config.js?v=mweofm5h"></script>
+<script src="data.enc.js?v=mweofm5h"></script>
+<script src="app.js?v=mweofm5h"></script>
+<script src="gate.js?v=mweofm5h"></script>
+</body>
+</html>
