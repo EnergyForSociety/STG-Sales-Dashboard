@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const src = path.resolve(arg('src', path.join(ROOT, 'design', 'project')));
+const src = path.resolve(arg('src', path.join(ROOT, 'design', 'project_live')));
 const out = path.resolve(arg('out', path.join(ROOT, 'data')));
 
 const canvas = JSON.parse(fs.readFileSync(path.join(src, 'canvas.json'), 'utf8'));
@@ -37,5 +37,14 @@ const asof = (fs.readFileSync(path.join(src, order[0]), 'utf8').match(/ดึง
 const asofIso = asof.length ? `${asof[2]}-${asof[1]}-${asof[0]}` : new Date().toISOString().slice(0, 10);
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, 'pages.json'), JSON.stringify({ order, titles, pages }));
-fs.writeFileSync(path.join(out, '_snapshot.json'), JSON.stringify({ asof: asofIso, fetched_at: new Date().toISOString(), source: 'Claude Design handoff', datasets: ['pages'] }, null, 2));
-console.log('เขียน data/pages.json (' + order.length + ' หน้า) · ข้อมูล ณ', asofIso);
+// ข้อมูลประกอบที่หน้าเว็บใช้คำนวณตามตัวกรอง: model.json (scripts/build_model.py) + ไฟล์จาก design/data
+// wc.json มาจาก scripts/build_wc.py (ลูกหนี้/เจ้าหนี้รายเอกสาร) · ที่เหลือมาจาก design/data
+const extra = { station_pl: 'station_pl.json', wc: null, ops: 'ops_model.json', yoy: 'yoy.json' };
+for (const [k, f] of Object.entries(extra)) if (f) fs.copyFileSync(path.join(ROOT, 'design', 'data', f), path.join(out, k + '.json'));
+if (!fs.existsSync(path.join(out, 'wc.json'))) { console.error('ไม่พบ data/wc.json — รัน python3 scripts/build_wc.py ก่อน'); process.exit(1); }
+if (!fs.existsSync(path.join(out, 'model.json'))) { console.error('ไม่พบ data/model.json — รัน python3 scripts/build_model.py ก่อน'); process.exit(1); }
+const model = JSON.parse(fs.readFileSync(path.join(out, 'model.json'), 'utf8'));
+const maxDay = model.lines.reduce((m, l) => Math.max(m, l[0]), 0);
+const asofModel = new Date(Date.parse(model.meta.epoch + 'T00:00:00Z') + maxDay * 864e5).toISOString().slice(0, 10);
+fs.writeFileSync(path.join(out, '_snapshot.json'), JSON.stringify({ asof: asofModel, fetched_at: model.meta.generated_at, source: 'TRCloud (read-only) + Claude Design', datasets: ['pages', 'model', ...Object.keys(extra)] }, null, 2));
+console.log('เขียน data/pages.json (' + order.length + ' หน้า) + ข้อมูลประกอบ · ข้อมูล ณ', asofModel);

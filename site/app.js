@@ -169,6 +169,7 @@
     if (!current) return;
     try { if (current.comp.componentWillUnmount) current.comp.componentWillUnmount(); } catch (e) { console.error(e); }
     current.comp.__dc_schedule = null;
+    (current.unsub || []).forEach(function (f) { f(); });
     if (current.raf) cancelAnimationFrame(current.raf);
     current.view.remove();
     helmetNodes.forEach(function (n) { n.remove(); }); helmetNodes = [];
@@ -196,15 +197,24 @@
     var Component = scriptEl ? new Function('DCLogic', scriptEl.textContent + '\n;return Component;')(DCLogic) : DCLogic;
     var props = {};
     try { var dp = JSON.parse(scriptEl.getAttribute('data-props') || '{}'); Object.keys(dp).forEach(function (k) { if (k[0] !== '$' && dp[k] && 'default' in dp[k]) props[k] = dp[k].default; }); } catch (e) {}
+    // หน้าที่มีตัวคำนวณของเรา (public/pages/*.js) จะคำนวณตัวเลขจากข้อมูลตามตัวกรองแทนตัวเลขตายตัวในดีไซน์
+    if (window.STAR_PAGES && STAR_PAGES[file] && window.STAR && STAR.M) Component = STAR_PAGES[file](Component);
     var comp = new Component(props);
     var cur = { comp: comp, raf: 0 };
     var vals = function () { var v = comp.renderVals() || {}; return v; };
     cur.view = mount(spec, root, null, vals());
     comp.__dc_schedule = function () {
       if (cur.raf) return;
-      cur.raf = requestAnimationFrame(function () { cur.raf = 0; try { cur.view.update(vals()); wireChrome(); } catch (e) { console.error(e); } });
+      cur.raf = requestAnimationFrame(function () { cur.raf = 0; try { cur.view.update(vals()); cur.mountFilters(); wireChrome(); } catch (e) { console.error(e); } });
     };
     current = cur;
+    cur.unsub = [];
+    if (window.STAR && STAR.M) cur.unsub.push(STAR.onChange(function () { comp.forceUpdate(); }));
+    cur.mountFilters = function () {
+      var el = root.querySelector('[data-star-filters]');
+      if (el && !el.__mounted && comp.__filters) { el.__mounted = 1; cur.unsub.push(STAR.mountFilters(el, comp.__filters())); }
+    };
+    cur.mountFilters();
     wireChrome();
     window.scrollTo(0, 0);
     try { if (comp.componentDidMount) comp.componentDidMount(); } catch (e) { console.error(e); }
@@ -238,13 +248,15 @@
   });
 
   function start(bundle) {
+    if (bundle.ds.model && window.STAR) STAR.init(bundle.ds);
     BUNDLE = bundle.ds.pages;
     var f = fileFromHash(); show(f); current.file = f;
   }
   function fail(msg) { root.innerHTML = ''; var d = document.createElement('div'); d.className = 'dc-err'; d.textContent = msg; root.appendChild(d); }
 
   if (window.DASH_STATIC) window.DASHApp = { start: function (b) { try { start(b); } catch (e) { console.error(e); fail('แสดงหน้า Dashboard ไม่สำเร็จ: ' + e.message); } } };
-  else fetch('../data/pages.json', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(function (p) { start({ ds: { pages: p } }); })
+  else Promise.all(['pages', 'model', 'station_pl', 'wc', 'ops', 'yoy'].map(function (n) {
+      return fetch('../data/' + n + '.json', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(n + ' HTTP ' + r.status); return r.json(); });
+    })).then(function (a) { start({ ds: { pages: a[0], model: a[1], station_pl: a[2], wc: a[3], ops: a[4], yoy: a[5] } }); })
     .catch(function (e) { fail('โหลดข้อมูลไม่สำเร็จ (' + e.message + ') — รัน node scripts/build_pages.js ก่อน'); });
 })();
