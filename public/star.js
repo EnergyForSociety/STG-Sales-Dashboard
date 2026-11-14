@@ -54,7 +54,7 @@ window.STAR = (function () {
   var KEY = 'star-filters-v1';
   var S = null;
   function defaults() {
-    return { preset: 'lastmonth', from: 0, to: 0, cos: ['STG', 'STP', 'TWP'], channel: '', station: '', group: '', product: '',
+    return { preset: 'lastmonth', from: 0, to: 0, cos: ['STG', 'STP', 'TWP'], channel: '', station: '', biz: '', group: '', product: '',
       wsStatus: '', wsSearch: '', plMonth: '', plCo: '', plKind: '', cashCo: '', cashSide: '', cashBucket: '', cashType: '', cashSearch: '', opsCo: '', opsKind: '', opsStatus: '' };
   }
   function save() { try { sessionStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
@@ -95,7 +95,8 @@ window.STAR = (function () {
     var u = U[l[2]], p = P[l[3]];
     if (!p.include) return false;
     if (!ig.co && S.cos.indexOf(CO[l[1]]) < 0) return false;
-    if (!ig.station && S.station && u.station_id !== S.station) return false;
+    if (!ig.station && S.station && (S.station.slice(0, 2) === 'u:' ? l[2] !== +S.station.slice(2) : u.station_id !== S.station)) return false;
+    if (!ig.biz && S.biz && u.unit_name !== S.biz) return false;
     if (!ig.group && S.group && p.group !== S.group) return false;
     if (!ig.channel && S.channel && CH[l[14]] !== S.channel) return false;
     if (!ig.product && S.product && p.co + '|' + p.id !== S.product) return false;
@@ -277,16 +278,28 @@ window.STAR = (function () {
     cos: function () { return { type: 'chips', label: 'บริษัท', options: function () { return CO.map(function (c) { return [c, c, CO_COLOR[c]]; }); }, isOn: function (c) { return S.cos.indexOf(c) >= 0; },
       toggle: function (c) { var i = S.cos.indexOf(c); if (i >= 0) { if (S.cos.length > 1) S.cos.splice(i, 1); } else S.cos.push(c); } }; },
     channel: function () { return { label: 'ช่องทาง', options: function () { return [['', 'ค้าปลีก + ค้าส่ง'], ['ค้าปลีก', 'ค้าปลีก'], ['ค้าส่ง', 'ค้าส่ง']]; }, get: function () { return S.channel; }, set: function (v) { S.channel = v; } }; },
-    station: function () { return { label: 'สถานี / หน่วย', options: function () {
-      var seen = {}, o = [['', 'ทุกสถานี/หน่วย']];
-      U.forEach(function (u) { if (S.cos.indexOf(u.company) < 0 || seen[u.station_id] || unitLast[U.indexOf(u)] < 0 && !U.some(function (v, i) { return v.station_id === u.station_id && unitLast[i] >= 0; })) return; seen[u.station_id] = 1; o.push([u.station_id, u.company + ' · ' + u.station_name]); });
+    /* สถานี/แผนก: สถานีที่มีหลายแผนกในบัญชี (เช่น พระราม 5 = น้ำมัน PTT + Café Amazon + 7-Eleven) เลือกทั้งสถานีหรือรายแผนกได้ */
+    station: function () { return { label: 'สถานี / แผนก', flex: '1 1 260px', options: function () {
+      var o = [['', 'ทุกสถานี/แผนก']], by = new Map();
+      U.forEach(function (u, i) { if (S.cos.indexOf(u.company) < 0 || unitLast[i] < 0) return; if (!by.has(u.station_id)) by.set(u.station_id, []); by.get(u.station_id).push(i); });
+      by.forEach(function (ids, sid) {
+        var u0 = U[ids[0]]; o.push([sid, u0.company + ' · ' + u0.station_name + (ids.length > 1 ? ' (ทุกแผนก)' : '')]);
+        if (ids.length > 1) ids.forEach(function (i) { var u = U[i]; o.push(['u:' + i, '\u00a0\u00a0\u00a0└ ' + u.station_name + ' · ' + (u.unit_name || 'ไม่ระบุ') + (u.dept_code ? ' (แผนก ' + u.dept_code + ')' : '')]); });
+      });
+      if (S.station && !o.some(function (x) { return x[0] === S.station; })) S.station = '';
       return o; }, get: function () { return S.station; }, set: function (v) { S.station = v; } }; },
+    /* หน่วยธุรกิจตามแผนกในบัญชี — รวมทุกสถานี เช่น Café Amazon (พระราม 5 + พิบูลสงคราม), 7-Eleven */
+    biz: function () { return { label: 'หน่วยธุรกิจ (แผนก)', options: function () {
+      var amt = new Map(); L.forEach(function (l) { var u = U[l[2]]; if (P[l[3]].include && S.cos.indexOf(CO[l[1]]) >= 0 && u.unit_name && u.unit_name !== 'ไม่ระบุสถานี') amt.set(u.unit_name, (amt.get(u.unit_name) || 0) + l[7]); });
+      if (S.biz && !amt.has(S.biz)) S.biz = '';
+      return [['', 'ทุกหน่วยธุรกิจ']].concat(Array.from(amt).sort(function (a, b) { return b[1] - a[1]; }).map(function (x) { return [x[0], x[0]]; })); },
+      get: function () { return S.biz; }, set: function (v) { S.biz = v; } }; },
     group: function () { return { label: 'กลุ่มธุรกิจ', options: function () { return [['', 'ทุกกลุ่ม']].concat(GROUPS.map(function (g) { return [g, g]; })); }, get: function () { return S.group; }, set: function (v) { S.group = v; S.product = ''; } }; },
     product: function () { return { label: 'สินค้า', options: function () {
       var amt = new Map(); L.forEach(function (l) { var p = P[l[3]]; if (p.include && S.cos.indexOf(p.co) >= 0 && (!S.group || p.group === S.group)) amt.set(l[3], (amt.get(l[3]) || 0) + l[7]); });
       return [['', 'ทุกสินค้า']].concat(Array.from(amt).filter(function (x) { return x[1] > 0; }).sort(function (a, b) { return b[1] - a[1]; }).map(function (x) { var p = P[x[0]]; return [p.co + '|' + p.id, p.co + ' · ' + p.name]; })); },
       get: function () { return S.product; }, set: function (v) { S.product = v; } }; },
-    resetSales: function () { var d = defaults(); ['preset', 'cos', 'channel', 'station', 'group', 'product'].forEach(function (k) { S[k] = d[k]; }); },
+    resetSales: function () { var d = defaults(); ['preset', 'cos', 'channel', 'station', 'biz', 'group', 'product'].forEach(function (k) { S[k] = d[k]; }); },
     note: function () { var c = ctx(); return 'ช่วงที่เลือก ' + rangeLabelLong(c.a, c.b) + ' · เทียบกับ ' + (c.cp ? rangeLabelLong(c.cp[0], c.cp[1]) + (dayDate(c.a).getUTCDate() === 1 ? ' (ช่วงเดียวกันของเดือนก่อนหน้า)' : ' (ช่วงยาวเท่ากันก่อนหน้า)') : 'ไม่มี — ข้อมูลเริ่ม 1 ม.ค. 2569') + (c.partial ? ' · ⚠ ช่วงนี้ยังไม่จบเดือน' : ''); }
   };
 

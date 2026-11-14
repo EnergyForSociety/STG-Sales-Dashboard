@@ -23,7 +23,7 @@ window.STAR_PAGES = (function () {
   /* ตัวกรองมาตรฐานหน้ายอดขาย */
   function salesFilters(rows2) {
     var F = S.F;
-    return { rows: [[F.period(), F.from(), F.to(), F.cos(), F.channel()], rows2 || [F.station(), F.group(), F.product()]], reset: F.resetSales, note: F.note };
+    return { rows: [[F.period(), F.from(), F.to(), F.cos(), F.channel()], rows2 || [F.station(), F.biz(), F.group(), F.product()]], reset: F.resetSales, note: F.note };
   }
 
   /* ================= 1 · Executive Snapshot ================= */
@@ -143,7 +143,7 @@ window.STAR_PAGES = (function () {
   /* ================= 4 · ธุรกิจและสินค้า ================= */
   var Products = function (Base) {
     return class extends Base {
-      __filters() { var F = S.F; return { rows: [[F.period(), F.from(), F.to(), F.cos(), F.channel()], [F.station(), F.group(), F.product()]], reset: F.resetSales, note: F.note }; }
+      __filters() { var F = S.F; return { rows: [[F.period(), F.from(), F.to(), F.cos(), F.channel()], [F.station(), F.biz(), F.group(), F.product()]], reset: F.resetSales, note: F.note }; }
       renderVals() {
         var th = this.__theme(), c = S.ctx(), b = this.__calc(c);
         var exp = {
@@ -216,7 +216,7 @@ window.STAR_PAGES = (function () {
   /* ================= 5 · บริษัทและสถานี ================= */
   var Stations = function (Base) {
     return class extends Base {
-      __filters() { var F = S.F; return { rows: [[F.period(), F.from(), F.to(), F.cos()], [F.channel(), F.group()]], reset: F.resetSales, note: F.note }; }
+      __filters() { var F = S.F; return { rows: [[F.period(), F.from(), F.to(), F.cos()], [F.channel(), F.biz(), F.group()]], reset: F.resetSales, note: F.note }; }
       renderVals() {
         var th = this.__theme(), c = S.ctx({ station: true, product: true }), b = this.__calc(c);
         var exp = { rows: function () { S.csv('STAR_สถานีและหน่วยธุรกิจ.csv', ['กลุ่ม', 'บริษัท', 'สถานี/หน่วย', 'สินค้าหลัก', c.label + ' (บาท)', c.cmpLabel + ' (บาท)', 'สัดส่วน', 'วันที่มีรายการ', 'เอกสารล่าสุด'],
