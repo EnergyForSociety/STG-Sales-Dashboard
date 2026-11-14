@@ -19,7 +19,7 @@
 ## รอบอัปเดตข้อมูล (รายเดือน)
 1. ดึง IV3 + CN3 (และ AR/AP) ของ 3 บริษัทจาก TRCloud ด้วย user อ่านอย่างเดียว · รับไฟล์ Excel ของ Operation (เป้า/AM, ฐานปีก่อน) และ P&L รายสถานี
 2. รันสคริปต์ใน `design/scripts/` ตาม `design/HANDOFF.md` (Rebuild pipeline) → อัปเดต `design/project/*.dc.html`
-3. ดึง IV3/CN3 และลูกหนี้/เจ้าหนี้ (get_receivable_due / get_payable_due) ด้วย user อ่านอย่างเดียว เก็บใน `raw/` แล้วรัน `python3 scripts/build_model.py` (→ `data/model.json`) และ `python3 scripts/build_wc.py` (→ `data/wc.json`)
+3. ดึง IV3/CN3 และลูกหนี้/เจ้าหนี้ (get_receivable_due / get_payable_due) ด้วย user อ่านอย่างเดียว เก็บใน `raw/` แล้วรัน `python3 scripts/build_model.py` (→ `data/model.json`) และ `python3 scripts/build_wc.py` (→ `data/wc.json`) และ `python3 scripts/build_stock.py` (ใบปรับปรุงสต๊อกจากการตรวจนับ LPG/น้ำมัน จาก search_gr keyword=ปรับปรุง → `data/stock.json`)
    จากนั้น `python3 design/patch_pages.py` (ใส่ตัวกรองและช่องข้อมูลลงหน้าดีไซน์ → `design/project_live`) และ `node scripts/build_pages.js` → `data/pages.json`
 4. `node scripts/build-static.js --key <path กุญแจนอก repo> --out site`
 5. ตรวจใน GitHub Desktop ว่าเปลี่ยนเฉพาะ `site/` (และโค้ดที่แก้) และ**ไม่มี** `design/`, `data/`, `raw/` → Commit → Push → GitHub Actions เผยแพร่เอง · ผู้ใช้กด Ctrl+F5

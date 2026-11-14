@@ -221,7 +221,66 @@ window.STAR_PAGES = (function () {
         var th = this.__theme(), c = S.ctx({ station: true, product: true }), b = this.__calc(c);
         var exp = { rows: function () { S.csv('STAR_สถานีและหน่วยธุรกิจ.csv', ['กลุ่ม', 'บริษัท', 'สถานี/หน่วย', 'สินค้าหลัก', c.label + ' (บาท)', c.cmpLabel + ' (บาท)', 'สัดส่วน', 'วันที่มีรายการ', 'เอกสารล่าสุด'],
           b.rows.filter(function (r) { return r.isRow; }).map(function (r) { return [r.group, r.co, r.name, r.unit, r.c.toFixed(2), r.p == null ? '' : r.p.toFixed(2), r.share, r.days, r.last]; })); } };
-        return Object.assign(b, th, { exp: exp, pt: stamp() });
+        var gpu = this.__gpu(c);
+        exp.gpu = function () { S.csv('STAR_กำไรขั้นต้นต่อหน่วย.csv', ['กลุ่ม', 'บริษัท', 'สถานี/หน่วย', 'หน่วยนับ', 'ปริมาณ', 'ราคาขาย/หน่วย', 'ต้นทุน/หน่วย', 'กำไรขั้นต้น/หน่วย', 'ค่ากลางกลุ่ม', 'กำไรขั้นต้นรวม', 'ส่วนต่างถ้าเท่าค่ากลาง', 'ยอดขายที่มีต้นทุน %'],
+          gpu.rows.filter(function (r) { return r.isRow; }).map(function (r) { return [r.grp, r.co, r.name, r.vu, r.q.toFixed(0), r.pr.toFixed(3), r.cs.toFixed(3), r.g.toFixed(3), r.med.toFixed(3), r.gpV.toFixed(2), r.potV.toFixed(2), r.covV.toFixed(1)]; })); };
+        var stk = this.__stock(c);
+        exp.stk = function () { S.csv('STAR_ส่วนต่างสต๊อกตรวจนับ.csv', ['บริษัท', 'สถานี/หน่วย', 'ส่วนเกินจากตรวจนับ (ลิตร)', 'ขายเดือนเดียวกัน (ลิตร)', '% ของปริมาณขาย', 'มูลค่า ณ ต้นทุน', 'ถ้าเป็นยอดขายที่ไม่ได้บันทึก', 'จำนวนเดือน', 'เอกสาร'],
+          stk.rows.map(function (r) { return [r.co, r.name, r.q.toFixed(2), r.s.toFixed(2), r.p.toFixed(2), r.v.toFixed(2), r.r.toFixed(2), r.n, r.docs]; })); };
+        return Object.assign(b, th, { exp: exp, gpu: gpu, stk: stk, pt: stamp() });
+      }
+      /* ใบปรับปรุงสต๊อกจากการตรวจนับสิ้นเดือน (data/stock.json) เทียบปริมาณขายเดือนเดียวกัน · ใช้เดือนที่วันสิ้นเดือนอยู่ในช่วงที่เลือก ถ้าไม่มีใช้ทั้งปี */
+      __stock(c) {
+        var A = ((S.data.stock || {}).adj || []).filter(function (x) { return S.S.cos.indexOf(x[0]) >= 0; });
+        var endOf = function (ym) { var y = +ym.slice(0, 4), m = +ym.slice(5, 7); return S.dayOf(new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)); };
+        var inP = A.filter(function (x) { var e = endOf(x[2]); return e >= c.a && e <= c.b; }), ytd = !inP.length; if (ytd) inP = A;
+        var uix = new Map(); S.U.forEach(function (u, i) { uix.set(u.company + '|' + u.dept_code, i); });
+        var months = new Set(inP.map(function (x) { return x[2]; })), sold = new Map();
+        S.L.forEach(function (l) { var p = S.P[l[3]]; if (!p.include || !p.vol_unit || l[5] <= 0) return; var ym = S.iso(l[0]).slice(0, 7); if (!months.has(ym)) return;
+          var k = l[2] + '|' + ym, r = sold.get(k) || [0, 0, 0]; r[0] += l[5]; r[1] += l[7]; r[2] += l[8] || 0; sold.set(k, r); });
+        var by = new Map();
+        inP.forEach(function (x) { var ui = uix.get(x[0] + '|' + x[1]); if (ui == null) return; var sv = sold.get(ui + '|' + x[2]) || [0, 0, 0], r = by.get(ui) || { ui: ui, q: 0, s: 0, v: 0, r: 0, n: new Set(), docs: [] };
+          r.q += x[3]; r.s += sv[0]; if (sv[0]) { r.v += x[3] * sv[2] / sv[0]; r.r += x[3] * sv[1] / sv[0]; } r.n.add(x[2]); r.docs.push(x[4]); by.set(ui, r); });
+        var rows = Array.from(by.values()).map(function (r) { r.p = r.s ? r.q / r.s * 100 : 0; return r; }).sort(function (a, b) { return b.p - a.p; });
+        var mx = Math.max.apply(null, rows.map(function (r) { return r.p; }).concat([0.01]));
+        var lpg = rows.filter(function (r) { return /LPG/.test(S.U[r.ui].business_group); }), oil = rows.filter(function (r) { return /น้ำมัน/.test(S.U[r.ui].business_group); });
+        var sm = function (rs, k) { return rs.reduce(function (t, r) { return t + r[k]; }, 0); };
+        var pct = function (rs) { var s = sm(rs, 's'); return s ? sm(rs, 'q') / s * 100 : 0; };
+        var lastM = Array.from(months).sort().pop() || '2026-01', lbl = ytd ? 'ม.ค.–' + S.TH_M[+lastM.slice(5, 7) - 1] + ' (ช่วงที่เลือกยังไม่มีการตรวจนับสิ้นเดือน จึงแสดงทั้งปี)' : c.label;
+        return { note: lbl + ' · ทุกใบเป็นการปรับเพิ่ม (นับได้มากกว่าในบัญชี) ไม่พบใบปรับลด · ข้อมูลจากใบปรับปรุงสต๊อกใน TRCloud',
+          kpis: [{ label: 'LPG ส่วนเกินจากตรวจนับ', value: S.fmt(pct(lpg), 2) + '%', sub: S.fmt(sm(lpg, 'q')) + ' ลิตร · ' + S.mb(sm(lpg, 'v')) + ' บาท ณ ต้นทุน' },
+            { label: 'น้ำมัน ส่วนเกินจากตรวจนับ', value: S.fmt(pct(oil), 2) + '%', sub: S.fmt(sm(oil, 'q')) + ' ลิตร · ' + S.mb(sm(oil, 'v')) + ' บาท ณ ต้นทุน' },
+            { label: 'ถ้าส่วนเกิน LPG เป็นยอดขายที่ไม่ได้บันทึก', value: S.mb(sm(lpg, 'r')), sub: 'บาท ก่อน VAT · คิดที่ราคาขายเฉลี่ยของสถานีเดือนนั้น' }],
+          rows: rows.map(function (r) { var u = S.U[r.ui], hi = /LPG/.test(u.business_group) ? r.p > 3 : r.p > 0.5;
+            return { co: u.company, chip: chip(u.company), name: S.unitLabel(u), q: r.q, s: r.s, p: r.p, v: r.v, r: r.r, n: r.n.size, docs: r.docs.join(' '),
+              qty: S.fmt(r.q) + ' ล.', sold: S.fmt(r.s) + ' ล.', pct: S.fmt(r.p, 2) + '%', val: S.fmt(r.v), rev: S.fmt(r.r),
+              bar: 'display: block; height: 100%; border-radius: 999px; width: ' + (r.p / mx * 100).toFixed(0) + '%; background: ' + (hi ? 'var(--down)' : 'var(--sand)') }; }),
+          foot: 'ใบปรับปรุง LPG ที่พบทั้งปีเป็นส่วนเกินทั้งหมด เกือบทุกสถานีทุกเดือน ราว 2–3% ของปริมาณขาย (ปกติควรใกล้ศูนย์ หรือขาดเล็กน้อย) — สาเหตุที่เป็นไปได้: ① ปริมาณรับเข้าตามใบส่งของ (แปลง กก.→ลิตร) ต่ำกว่าปริมาณจริง ② มิเตอร์หัวจ่ายหรือ POS บันทึกขายไม่ครบ ③ วิธีวัดสต๊อกในถัง · ควรให้ฝ่ายปฏิบัติการเทียบมิเตอร์หัวจ่ายกับยอด POS และตรวจอัตราแปลงหน่วยของผู้ค้า' };
+      }
+      /* กำไรขั้นต้นต่อหน่วย (บาท/ลิตร หรือ บาท/กก.) จากคอลัมน์ต้นทุนใน IV3 · เฉพาะสินค้าที่มีหน่วยปริมาณ · เทียบค่ากลางของสถานีประเภทเดียวกัน */
+      __gpu(c) {
+        var m = new Map(), miss = new Map();
+        c.cur.forEach(function (l) { var p = S.P[l[3]]; if (!p.vol_unit) { if (!l[8] && Math.abs(l[7]) > 0) { var u = S.U[l[2]]; if (/Amazon|NGV|7-Eleven/.test(u.unit_name)) miss.set(u.unit_name, (miss.get(u.unit_name) || 0) + l[7]); } return; }
+          var k = l[2] + '|' + p.vol_unit, r = m.get(k) || { ui: l[2], vu: p.vol_unit, q: 0, a: 0, cst: 0, all: 0 }; r.all += l[7];
+          if (l[5] > 0 && l[8] > 0) { r.q += l[5]; r.a += l[7]; r.cst += l[8]; } m.set(k, r); });
+        var kind = function (u, vu) { return u.unit_name === 'ค้าส่ง LPG' ? 'ค้าส่ง LPG' : (u.business_group || 'อื่น ๆ') + ' · ' + (u.brand || '') + ' (บาท/' + vu + ')'; };
+        var rs = Array.from(m.values()).filter(function (r) { return r.q > 0; }).map(function (r) { var u = S.U[r.ui]; r.u = u; r.k = kind(u, r.vu); r.g = (r.a - r.cst) / r.q; r.pr = r.a / r.q; r.cs = r.cst / r.q; r.cov = r.all ? r.a / r.all * 100 : 0; return r; });
+        var med = new Map(); Array.from(new Set(rs.map(function (r) { return r.k; }))).forEach(function (k) { var v = rs.filter(function (r) { return r.k === k; }).map(function (r) { return r.g; }).sort(function (a, b) { return a - b; }); med.set(k, v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2); });
+        var mx = Math.max.apply(null, rs.map(function (r) { return r.g; }).concat([0.01])), rows = [], potT = 0;
+        var order = function (k) { return /^น้ำมัน/.test(k) ? 0 : /^LPG/.test(k) ? 1 : /ค้าส่ง/.test(k) ? 2 : 3; };
+        Array.from(med.keys()).sort(function (a, b) { return order(a) - order(b) || a.localeCompare(b); }).forEach(function (k) {
+          var grp = rs.filter(function (r) { return r.k === k; }).sort(function (a, b) { return b.g - a.g; }), md = med.get(k);
+          rows.push({ isGroup: true, isRow: false, name: k + (grp.length > 1 ? ' · ค่ากลาง ' + S.fmt(md, 2) : '') });
+          grp.forEach(function (r) { var d = r.g - md, pot = grp.length > 1 && d < -0.005 ? -d * r.q : 0; potT += pot;
+            rows.push({ isGroup: false, isRow: true, grp: k, co: r.u.company, chip: chip(r.u.company), name: S.unitLabel(r.u), vu: r.vu, q: r.q, pr: r.pr, cs: r.cs, g: r.g, med: md, gpV: r.a - r.cst, potV: pot, covV: r.cov,
+              qty: S.fmt(r.q) + ' ' + r.vu, price: S.fmt(r.pr, 2), cost: S.fmt(r.cs, 2), gpu: S.fmt(r.g, 2), gp: S.fmt(r.a - r.cst), cov: r.cov < 95 ? 'ยอดที่มีต้นทุน ' + S.fmt(r.cov, 0) + '% ของยอดขายสินค้านี้' : '',
+              d: grp.length > 1 ? (Math.abs(d) < 0.005 ? '0.00' : (d > 0 ? '+' : '−') + S.fmt(Math.abs(d), 2)) : '–', dStyle: grp.length < 2 ? 'color: var(--muted)' : d < -0.3 ? 'color: var(--down); font-weight: 600' : d < 0 ? 'color: #B45309' : 'color: var(--up)',
+              pot: pot ? '+' + S.mb(pot) : '–', potStyle: pot ? 'color: var(--sandtx); font-weight: 500' : 'color: var(--muted)',
+              bar: 'display: block; height: 100%; border-radius: 999px; width: ' + Math.max(0, r.g / mx * 100).toFixed(0) + '%; background: ' + (d < -0.3 && grp.length > 1 ? 'var(--down)' : 'var(--sand)') }); });
+        });
+        return { rows: rows,
+          note: c.label + ' · กำไรขั้นต้น = ยอดขายก่อน VAT − ต้นทุนในใบขาย IV3 ÷ ปริมาณ · ค่ากลาง = มัธยฐานของสถานีประเภทเดียวกัน' + (potT ? ' · ถ้าสถานีที่ต่ำกว่าค่ากลางขยับขึ้นมาเท่าค่ากลาง กำไรขั้นต้นเพิ่ม ' + S.mb(potT) + ' บาท' : ''),
+          missing: miss.size ? 'ไม่มีต้นทุนในใบขาย จึงคำนวณกำไรไม่ได้: ' + Array.from(miss).map(function (x) { return x[0] + ' ' + S.mb(x[1]); }).join(' · ') + ' — ต้องให้บัญชีบันทึกต้นทุนขายของหน่วยเหล่านี้' : '' };
       }
       __calc(c) {
         var self = this, st = this.state || {};
@@ -497,7 +556,9 @@ window.STAR_PAGES = (function () {
   var BUCKETS = ['ยังไม่ครบกำหนด', '1–30 วัน', '31–60 วัน', '61–90 วัน', 'เกิน 90 วัน'];
   var B_COLOR = ['var(--bar2)', '#C49A76', '#D9822B', '#C2410C', 'var(--down)'];
   var bucketOf = function (od) { return od <= 0 ? 0 : od <= 30 ? 1 : od <= 60 ? 2 : od <= 90 ? 3 : 4; };
-  var POS_AR = /เงินสด|บัตร|Promotion|คูปอง|Corpo?rate|Amazon|ลูกค้าทั่วไป|LINE MAN|QR|โอน|Prepaid|เครดิต/i;
+  var POS_AR = /เงินสด|บัตร|Promotion|คูปอง|Corpo?rate|Amazon|ลูกค้าทั่วไป|LINE MAN|QR|โอน|Prepaid|เครดิต|Wallet/i;
+  /* ยอดขายหน้าสถานีที่บันทึกเป็นลูกหนี้รายวัน (ลูกค้าเงินสด/บัตร/แพลตฟอร์ม/โปรโมชัน) — ไม่ใช่ลูกหนี้การค้า ควรตัดรับภายในไม่กี่วัน */
+  var isPos = function (d) { return d[1] === 'AR' && !/ค้าส่ง/.test(d[4]) && POS_AR.test(d[3]); };
   var Cash = function (Base) {
     return class extends Base {
       __filters() {
@@ -506,10 +567,11 @@ window.STAR_PAGES = (function () {
         return { rows: [[
           { label: 'บริษัท', options: function () { return [['', 'STG + STP + TWP'], ['STG', 'STG'], ['STP', 'STP'], ['TWP', 'TWP']]; }, get: function () { return SS.cashCo; }, set: function (v) { SS.cashCo = v; } },
           { label: 'ฝั่ง', options: function () { return [['', 'ลูกหนี้ + เจ้าหนี้'], ['AR', 'ลูกหนี้ค้างรับ'], ['AP', 'เจ้าหนี้ค้างจ่าย']]; }, get: function () { return SS.cashSide; }, set: function (v) { SS.cashSide = v; } },
+          { label: 'ประเภทลูกหนี้', options: function () { return [['', 'ทั้งหมด'], ['trade', 'ลูกหนี้การค้า (ไม่รวมยอดหน้าสถานี)'], ['pos', 'ยอดขายหน้าสถานีรอตัดรับเงิน']]; }, get: function () { return SS.cashKind || ''; }, set: function (v) { SS.cashKind = v; } },
           { label: 'อายุหนี้', options: function () { return [['', 'ทุกช่วงอายุ']].concat(BUCKETS.map(function (b, i) { return [String(i), b]; })).concat([['od', 'เกินกำหนดทั้งหมด']]); }, get: function () { return SS.cashBucket; }, set: function (v) { SS.cashBucket = v; } },
           { label: 'ประเภทคู่ค้า', options: function () { return [['', 'ทุกประเภท']].concat(types.map(function (t) { return [t, t]; })); }, get: function () { return SS.cashType; }, set: function (v) { SS.cashType = v; } },
           { type: 'text', label: 'ค้นหาคู่ค้า', placeholder: 'ชื่อหรือรหัส', get: function () { return SS.cashSearch; }, set: function (v) { SS.cashSearch = v; } }]],
-          reset: function () { SS.cashCo = SS.cashSide = SS.cashBucket = SS.cashType = SS.cashSearch = ''; },
+          reset: function () { SS.cashCo = SS.cashSide = SS.cashBucket = SS.cashType = SS.cashSearch = SS.cashKind = ''; },
           note: function () { return 'ยอดคงค้าง ณ ' + S.thDate(S.dayOf((S.data.wc || {}).asof || S.iso(S.MAXDAY))) + ' (หลังหัก ณ ที่จ่าย) · อายุนับจากวันครบกำหนด · ตัวกรองไม่มีช่วงเวลา เพราะเป็นยอดคงค้าง ณ วันที่ดึง'; } };
       }
       renderVals() {
@@ -521,6 +583,7 @@ window.STAR_PAGES = (function () {
           if (SS.cashBucket === 'od' && d[7] <= 0) return false;
           if (SS.cashBucket !== '' && SS.cashBucket !== 'od' && bucketOf(d[7]) !== +SS.cashBucket) return false;
           if (q && (d[3] + ' ' + d[2]).toLowerCase().indexOf(q) < 0) return false;
+          if (SS.cashKind && d[1] === 'AR' && (SS.cashKind === 'pos') !== isPos(d)) return false;
           return true;
         });
         var ar = docs.filter(function (d) { return d[1] === 'AR'; }), ap = docs.filter(function (d) { return d[1] === 'AP'; });
@@ -528,11 +591,13 @@ window.STAR_PAGES = (function () {
         var sum = function (rows) { return rows.reduce(function (s, d) { return s + d[6]; }, 0); };
         var cos = SS.cashCo ? [SS.cashCo] : ['STG', 'STP', 'TWP'];
         var byCo = function (rows) { return cos.map(function (c) { return c + ' ' + S.fmt(sum(rows.filter(function (d) { return d[0] === c; })) / 1e6, 2); }).join(' · ') + ' ล้าน'; };
-        var pos = ar.filter(function (d) { return d[7] > 0 && POS_AR.test(d[3]); }), wsAr = ar.filter(function (d) { return /ค้าส่ง/.test(d[4]); });
+        var pos = ar.filter(isPos), trade = ar.filter(function (d) { return !isPos(d); }), wsAr = ar.filter(function (d) { return /ค้าส่ง/.test(d[4]); });
         var apOld = ap.filter(function (d) { return d[7] > 60; });
         var kp = [];
-        if (showAR) kp.push({ label: 'ลูกหนี้ค้างรับ', v: sum(ar), sub: byCo(ar), hero: true });
-        if (showAR) kp.push({ label: 'ยอดขายหน้าสถานีที่ยังไม่บันทึกรับเงิน', v: sum(pos), sub: 'ลูกค้าเงินสด/บัตร/โปรโมชันที่เลยกำหนด · ควรเป็นศูนย์ภายในไม่กี่วัน', warn: sum(pos) > 0 });
+        var asofD = S.dayOf(W.asof || S.iso(S.MAXDAY)), ageOf = function (d) { return Math.max(0, asofD - S.dayOf(d[9] || d[5])); };
+        var posAvg = sum(pos) ? pos.reduce(function (t, d) { return t + d[6] * ageOf(d); }, 0) / sum(pos) : 0, pos7 = pos.filter(function (d) { return ageOf(d) > 7; });
+        if (showAR && SS.cashKind !== 'pos') kp.push({ label: 'ลูกหนี้การค้า (ไม่รวมยอดหน้าสถานี)', v: sum(trade), sub: byCo(trade) + ' · เกินกำหนด ' + S.mb(sum(trade.filter(function (d) { return d[7] > 0; }))), hero: true });
+        if (showAR && SS.cashKind !== 'trade') kp.push({ label: 'ยอดขายหน้าสถานีรอตัดรับเงิน', v: sum(pos), sub: 'บัญชีลูกค้าเงินสด/บัตร/แพลตฟอร์ม · ค้างเฉลี่ย ' + S.fmt(posAvg, 1) + ' วันนับจากวันขาย · ค้างเกิน 7 วัน ' + S.mb(sum(pos7)), warn: posAvg > 3, hero: SS.cashKind === 'pos' });
         if (showAR) kp.push({ label: 'ลูกหนี้ค้าส่ง LPG', v: sum(wsAr), sub: 'เกินกำหนด ' + S.mb(sum(wsAr.filter(function (d) { return d[7] > 0; }))) + ' · เกิน 90 วัน ' + S.mb(sum(wsAr.filter(function (d) { return d[7] > 90; }))) });
         if (showAP) kp.push({ label: 'เจ้าหนี้ค้างจ่าย', v: sum(ap), sub: 'เกินกำหนด 60 วันขึ้นไป ' + S.mb(sum(apOld)), warn: sum(apOld) > 0, hero: !showAR });
         var kpis = kp.map(function (k) { return { label: k.label, value: S.fmt(k.v * p / 1e6, 2), sub: k.sub,
@@ -541,10 +606,10 @@ window.STAR_PAGES = (function () {
         /* อายุหนี้ */
         var legend = BUCKETS.map(function (n, i) { return { label: n, dot: 'width: 12px; height: 12px; border-radius: 2px; background: ' + B_COLOR[i] }; });
         var ag = [];
-        [['AR', 'ลูกหนี้', showAR], ['AP', 'เจ้าหนี้', showAP]].forEach(function (x) {
+        [['AR', 'ลูกหนี้การค้า', showAR, false], ['AR', 'หน้าสถานีรอตัดรับ', showAR, true], ['AP', 'เจ้าหนี้', showAP, null]].forEach(function (x) {
           if (!x[2]) return;
           cos.forEach(function (c) {
-            var rows = docs.filter(function (d) { return d[1] === x[0] && d[0] === c; }); if (!rows.length) return;
+            var rows = docs.filter(function (d) { return d[1] === x[0] && d[0] === c && (x[3] == null || isPos(d) === x[3]); }); if (!rows.length) return;
             var b = [0, 0, 0, 0, 0]; rows.forEach(function (d) { b[bucketOf(d[7])] += d[6]; });
             var top = new Map(); rows.forEach(function (d) { top.set(d[3], (top.get(d[3]) || 0) + d[6]); });
             var t1 = Array.from(top).sort(function (a, b) { return b[1] - a[1]; })[0];
@@ -581,13 +646,19 @@ window.STAR_PAGES = (function () {
           return { co: c.co, chip: chip(c.co), name: c.name + ' (' + c.code + ')', tag: tag, totV: c.tot, odV: c.od, mxV: c.mx, total: S.fmt(c.tot), od: c.od ? S.fmt(c.od) : '–', mx: c.mx > 0 ? c.mx + ' วัน' : '–',
             tagStyle: 'font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; background: ' + ts[0] + '; color: ' + ts[1], odStyle: c.od ? 'color: var(--down); font-weight: 500' : 'color: var(--muted)' };
         });
+        var pc = new Map(); pos.forEach(function (d) { var k = d[0] + '|' + d[3]; var c = pc.get(k) || { co: d[0], name: d[3], tot: 0, n: 0, first: 1e9, w: 0, old: 0 }; c.tot += d[6]; c.n++; var a = ageOf(d); c.w += d[6] * a; c.first = Math.min(c.first, asofD - a); if (a > 7) c.old += d[6]; pc.set(k, c); });
+        var posRows = Array.from(pc.values()).sort(function (a, b) { return b.tot - a.tot; }).map(function (c) { var avg = c.tot ? c.w / c.tot : 0;
+          return { co: c.co, chip: chip(c.co), name: c.name, totV: c.tot, avgV: avg, oldV: c.old, total: S.fmt(c.tot), docs: c.n, oldest: S.thDate(c.first), age: S.fmt(avg, 1),
+            ageStyle: avg > 7 ? 'color: var(--down); font-weight: 600' : avg > 3 ? 'color: #B45309; font-weight: 500' : 'color: var(--muted)', old: c.old ? S.fmt(c.old) : '–', oldStyle: c.old ? 'color: var(--down); font-weight: 500' : 'color: var(--muted)' }; });
         var asofTh = S.thDate(S.dayOf(W.asof || S.iso(S.MAXDAY)));
         var exp = {
           aging: function () { S.csv('STAR_อายุลูกหนี้เจ้าหนี้.csv', ['บริษัท', 'ฝั่ง', 'รหัส', 'คู่ค้า', 'ประเภทคู่ค้า', 'เลขเอกสาร', 'วันที่เอกสาร', 'ครบกำหนด', 'เกินกำหนด (วัน)', 'ช่วงอายุ', 'ยอดคงค้าง'], docs.filter(function (d) { return (d[1] === 'AR' && showAR) || (d[1] === 'AP' && showAP); }).map(function (d) { return [d[0], d[1] === 'AR' ? 'ลูกหนี้' : 'เจ้าหนี้', d[2], d[3], d[4], d[8], d[9], d[5], d[7], BUCKETS[bucketOf(d[7])], d[6].toFixed(2)]; })); },
           ws: function () { S.csv('STAR_ลูกหนี้ค้าส่ง.csv', ['รหัส', 'ลูกค้า', 'เอกสาร', 'แนวโน้มการซื้อ', 'ยอดค้างรวม', 'เกินกำหนด', 'เกินนานสุด (วัน)'], ws.map(function (w) { return [w.code, w.name, w.docs, w.trend, w.totV.toFixed(2), w.odV.toFixed(2), w.mxV]; })); },
+          pos: function () { S.csv('STAR_ยอดหน้าสถานีรอตัดรับ.csv', ['บริษัท', 'บัญชีลูกหนี้', 'ยอดรอตัดรับ', 'เอกสาร', 'วันขายเก่าสุด', 'ค้างเฉลี่ย (วัน)', 'ค้างเกิน 7 วัน'], posRows.map(function (r) { return [r.co, r.name, r.totV.toFixed(2), r.docs, r.oldest, r.avgV.toFixed(1), r.oldV.toFixed(2)]; })); },
           ap: function () { S.csv('STAR_เจ้าหนี้รายสำคัญ.csv', ['บริษัท', 'เจ้าหนี้', 'กลุ่ม', 'ยอดค้าง', 'เกินกำหนด', 'เกินนานสุด (วัน)'], apRows.map(function (r) { return [r.co, r.name, r.tag, r.totV.toFixed(2), r.odV.toFixed(2), r.mxV]; })); }
         };
-        return Object.assign({}, th, { kpis: kpis, legend: legend, aging: aging, ws: ws, ap: apRows, exp: exp, decisions: (super.renderVals() || {}).decisions || [],
+        return Object.assign({}, th, { kpis: kpis, legend: legend, aging: aging, ws: ws, ap: apRows, exp: exp, pos: posRows, showPos: showAR && SS.cashKind !== 'trade' && posRows.length > 0,
+          posNote: 'ยอดขายรายวันที่บันทึกเป็นลูกหนี้ในชื่อลูกค้าเงินสด/บัตร/แพลตฟอร์ม ยังไม่มีใบรับเงินมาตัด · ปกติควรตัดภายใน 1–3 วัน · อายุนับจากวันที่เอกสารถึง ' + S.thDate(asofD), decisions: (super.renderVals() || {}).decisions || [],
           hdr: 'ลูกหนี้ค้างรับและเจ้าหนี้ค้างจ่าย ณ ' + asofTh + ' · ' + (SS.cashCo || 'STG STP และ TWP'),
           wsNote: 'STG · ' + S.mb(sum(wsAr)) + ' บาท · แนวโน้มการซื้อ = ' + S.TH_M[m < 0 ? 11 : m] + ' เทียบ ' + S.TH_M[m - 1 < 0 ? 11 : m - 1] + ' · ลูกค้าที่ซื้อลดลงแต่ยังมียอดค้าง ควรติดตามก่อน',
           asofTh: asofTh, pt: { stamp: 'ข้อมูลจริงจาก TRCloud · ยอดคงค้าง ณ ' + asofTh } });

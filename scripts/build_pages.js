@@ -39,8 +39,9 @@ fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, 'pages.json'), JSON.stringify({ order, titles, pages }));
 // ข้อมูลประกอบที่หน้าเว็บใช้คำนวณตามตัวกรอง: model.json (scripts/build_model.py) + ไฟล์จาก design/data
 // wc.json มาจาก scripts/build_wc.py (ลูกหนี้/เจ้าหนี้รายเอกสาร) · ที่เหลือมาจาก design/data
-const extra = { station_pl: 'station_pl.json', wc: null, ops: 'ops_model.json', yoy: 'yoy.json' };
+const extra = { station_pl: 'station_pl.json', wc: null, stock: null, ops: 'ops_model.json', yoy: 'yoy.json' };
 for (const [k, f] of Object.entries(extra)) if (f) fs.copyFileSync(path.join(ROOT, 'design', 'data', f), path.join(out, k + '.json'));
+if (!fs.existsSync(path.join(out, 'stock.json'))) { console.error('ไม่พบ data/stock.json — รัน python3 scripts/build_stock.py ก่อน'); process.exit(1); }
 if (!fs.existsSync(path.join(out, 'wc.json'))) { console.error('ไม่พบ data/wc.json — รัน python3 scripts/build_wc.py ก่อน'); process.exit(1); }
 if (!fs.existsSync(path.join(out, 'model.json'))) { console.error('ไม่พบ data/model.json — รัน python3 scripts/build_model.py ก่อน'); process.exit(1); }
 const model = JSON.parse(fs.readFileSync(path.join(out, 'model.json'), 'utf8'));

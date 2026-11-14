@@ -6,7 +6,7 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 const srv = http.createServer((q, r) => {
   const rel = decodeURIComponent(q.url.split('?')[0]).replace(/\/$/, '/index.html');
   const f = path.join(ROOT, rel);
-  if (!f.startsWith(ROOT) || !/^\/(public|data\/(pages|model|station_pl|wc|ops|yoy)\.json)/.test(rel)) { r.writeHead(404); return r.end(); }
+  if (!f.startsWith(ROOT) || !/^\/(public|data\/(pages|model|station_pl|wc|stock|ops|yoy)\.json)/.test(rel)) { r.writeHead(404); return r.end(); }
   fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); r.end(d); } });
 });
 srv.listen(port, '127.0.0.1', () => console.log(`http://localhost:${port}/public/`));
