@@ -156,6 +156,43 @@ window.STAR = (function () {
   }
   function unitDaysIn(ui, a, b) { var n = 0; for (var d = a; d <= b; d++) if (unitDays[ui].has(d)) n++; return n; }
 
+  /* ---------- ค่าแปลงหน่วย LPG (config/lpg_factor.csv → data/lpg.json) ----------
+     เลือกแถวตามวันที่ของเอกสาร จึงแก้ค่าปัจจุบันได้โดยไม่เปลี่ยนผลย้อนหลัง
+     แถวที่เจาะจงกว่า (บริษัท/สาขา/สินค้า) ชนะแถวที่กว้างกว่า · ไม่มีแถวที่ตรง = ไม่แปลง (คืน null) */
+  function lpgRow(co, stationId, productId, day) {
+    var cfg = X.lpg; if (!cfg || !cfg.rows) return null;
+    var d = typeof day === 'number' ? iso(day) : day, best = null, bestScore = -1;
+    cfg.rows.forEach(function (r) {
+      if (r.co !== '*' && r.co !== co) return;
+      if (r.station !== '*' && r.station !== stationId) return;
+      if (r.product !== '*' && r.product !== productId) return;
+      if (d && (d < r.from || (r.to && d > r.to))) return;
+      var sc = (r.co !== '*' ? 4 : 0) + (r.station !== '*' ? 2 : 0) + (r.product !== '*' ? 1 : 0);
+      if (sc > bestScore) { bestScore = sc; best = r; }
+    });
+    return best;
+  }
+  /* กก. → ลิตร (คืน null เมื่อไม่มีค่าแปลงที่ยืนยัน จะได้ไม่แสดงตัวเลขที่เดาเอง) */
+  function kgToLitre(kg, co, stationId, productId, day) {
+    var r = lpgRow(co, stationId, productId, day); return r ? kg * r.factor : null;
+  }
+  /* ปริมาณ LPG ของแถวที่เลือก แปลงเป็นลิตรเทียบเท่า — แยกว่าเดิมเป็นลิตรอยู่แล้วหรือแปลงมาจากกิโลกรัม */
+  function lpgLitreEq(rows) {
+    var out = { litre: 0, fromKg: 0, kg: 0, factors: {}, missing: 0 };
+    rows.forEach(function (l) {
+      var p = P[l[3]]; if (p.group !== 'LPG' || !(l[6] === 1 || l[6] === 2)) return;
+      var u = U[l[2]], unit = p.vol_unit || '';
+      if (unit === 'ลิตร' || (l[6] === 2 && unit !== 'กก.')) { out.litre += l[5]; return; }
+      if (unit !== 'กก.' && unit !== 'กิโลกรัม') return;
+      out.kg += l[5];
+      var r = lpgRow(u.company, u.station_id, p.id, l[0]);
+      if (!r) { out.missing += l[5]; return; }
+      out.fromKg += l[5] * r.factor; out.factors[r.factor] = (out.factors[r.factor] || 0) + l[5];
+    });
+    out.total = out.litre + out.fromKg;
+    return out;
+  }
+
   /* ---------- ประเด็นสำหรับผู้บริหาร (กฎคงที่ ตรวจย้อนได้) ---------- */
   var TEAM = { 'น้ำมัน': 'ทีมปฏิบัติการสถานี (น้ำมัน)', 'LPG': 'ทีมปฏิบัติการสถานี (LPG)', 'NGV': 'ทีมปฏิบัติการ NGV / TWP', 'Non-Oil': 'ทีม Non-Oil', 'อื่น ๆ / รอจัดประเภท': 'ฝ่ายบัญชี' };
   function insights(c) {
@@ -327,6 +364,7 @@ window.STAR = (function () {
     fmt: fmt, mb: mb, M2: M2, sgn: sgn, pct: pct, diffTxt: diffTxt, esc: esc,
     applyPreset: applyPreset, comparePeriod: comparePeriod, lineOK: lineOK, sel: sel, sum: sum, groupBy: groupBy, grp: grp, co: co, unitLabel: unitLabel,
     ctx: ctx, monthly: monthly, priceVolume: priceVolume, unitGaps: unitGaps, unitDaysIn: unitDaysIn, insights: insights,
+    lpgRow: lpgRow, kgToLitre: kgToLitre, lpgLitreEq: lpgLitreEq, get lpg() { return X.lpg || null; },
     get unitLast() { return unitLast; },
     F: F, mountFilters: mountFilters, onChange: onChange, fire: fire, save: save, defaults: defaults, csv: csv, h: h
   };

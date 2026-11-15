@@ -691,5 +691,219 @@ window.STAR_PAGES = (function () {
     };
   };
 
-  return { 'Main.dc.html': Main, 'Products.dc.html': Products, 'Stations.dc.html': Stations, 'Wholesale.dc.html': Wholesale, 'Profit.dc.html': Profit, 'Cash.dc.html': Cash, 'Ops.dc.html': Ops };
+  /* ================= กลยุทธ์ · ภาพรวมการเติบโต =================
+     เทียบช่วงที่เลือกกับช่วงก่อนหน้าจากเอกสารขายจริง · same-store = หน่วยธุรกิจที่มียอดทั้งสองช่วง
+     ไม่คำนวณ CLV และไม่สร้าง Market Segment เอง (ดูตาราง "สิ่งที่หน้านี้ยังไม่แสดง") */
+  var TDR = 'padding: 10px; border-bottom: 1px solid var(--line); text-align: right; font-family: \'Outfit\', sans-serif';
+  var Strategy = function (Base) {
+    return class extends Base {
+      __filters() { return salesFilters(); }
+      renderVals() {
+        var th = this.__theme(), self = this, p = th.p, c = S.ctx(), hasCmp = c.cp != null;
+        var pct1 = function (v) { return v == null ? '–' : S.fmt(v, 1) + '%'; };
+        var dSt = function (d) { return "font-family: 'Outfit', sans-serif; font-weight: 500; color: " + (d >= 0 ? UP : DOWN); };
+        var cell = function (v, color) { return { v: v, st: TDR + (color ? '; color: ' + color : '') }; };
+
+        /* --- ตารางเทียบตามมิติ --- */
+        function table(title, sub, c0, keyf, order, note, file) {
+          var m1 = S.groupBy(c.cur, keyf), m0 = hasCmp ? S.groupBy(c.cmp, keyf) : new Map();
+          var keys = order || Array.from(new Set(Array.from(m1.keys()).concat(Array.from(m0.keys()))));
+          var rows = keys.map(function (k) { return { k: k, cur: m1.get(k) || 0, prev: m0.get(k) || 0 }; })
+            .filter(function (r) { return r.cur || r.prev; }).sort(function (x, y) { return y.cur - x.cur; });
+          var tot = S.sum(c.cur);
+          return {
+            title: title, sub: sub, c0: c0, cols: ['ช่วงที่เลือก', 'ช่วงเทียบ', 'ผลต่าง', 'สัดส่วน'], note: note,
+            rows: rows.map(function (r) {
+              var d = hasCmp ? r.cur - r.prev : null;
+              return { name: r.k, cells: [cell(S.mb(r.cur)), cell(hasCmp ? S.mb(r.prev) : 'N/A'),
+                { v: hasCmp ? S.sgn(d) + S.mb(Math.abs(d)) + ' (' + S.pct(r.cur, r.prev) + ')' : 'N/A', st: TDR + (hasCmp ? '; color: ' + (d >= 0 ? UP : DOWN) : '; color: var(--muted)') },
+                cell(tot ? pct1(r.cur / tot * 100) : '–')] };
+            }),
+            csv: function () { S.csv(file, [c0, 'ช่วงที่เลือก (บาท)', 'ช่วงเทียบ (บาท)', 'ผลต่าง (บาท)', 'สัดส่วน %'],
+              rows.map(function (r) { return [r.k, r.cur.toFixed(2), hasCmp ? r.prev.toFixed(2) : '', hasCmp ? (r.cur - r.prev).toFixed(2) : '', tot ? (r.cur / tot * 100).toFixed(1) : '']; })); }
+          };
+        }
+        var tables = [
+          table('การเติบโตตามบริษัท', c.scope, 'บริษัท', function (l) { return S.co(l) + ' · ' + S.CO_TH[S.co(l)]; }, null,
+            'ยอดขายก่อน VAT หักใบลดหนี้แล้ว · ยอดรวมสามบริษัทนี้ยังไม่ตัดรายการระหว่างกัน', 'STAR_growth_company.csv'),
+          table('การเติบโตตามกลุ่มธุรกิจ', 'น้ำมัน · LPG · NGV · Non-Oil', 'กลุ่มธุรกิจ', S.grp, S.GROUPS,
+            'ปริมาณแต่ละกลุ่มใช้หน่วยต่างกัน (ลิตร กก. ชิ้น) จึงเทียบได้เฉพาะมูลค่า', 'STAR_growth_group.csv'),
+          table('การเติบโตตามช่องทาง', 'ค้าปลีกหน้าสถานี เทียบ ค้าส่ง', 'ช่องทาง', function (l) { return S.CH[l[14]]; }, S.CH,
+            'ค้าส่งอ่านจากประเภทคู่ค้าและแผนกตามกฎใน config/channel_rules.csv', 'STAR_growth_channel.csv')
+        ];
+
+        /* --- same-store: เทียบเฉพาะหน่วยธุรกิจที่มียอดทั้งสองช่วง --- */
+        var u1 = S.groupBy(c.cur, function (l) { return l[2]; }), u0 = S.groupBy(c.cmp, function (l) { return l[2]; });
+        var both = [], onlyNew = [], onlyOld = [];
+        Array.from(new Set(Array.from(u1.keys()).concat(Array.from(u0.keys())))).forEach(function (ui) {
+          var a = u1.get(ui) || 0, b = u0.get(ui) || 0;
+          if (a && b) both.push([ui, a, b]); else if (a) onlyNew.push([ui, a]); else onlyOld.push([ui, b]);
+        });
+        var ssCur = both.reduce(function (s, r) { return s + r[1]; }, 0), ssPrev = both.reduce(function (s, r) { return s + r[2]; }, 0);
+        var nameOf = function (ui) { return S.unitLabel(S.U[ui]); };
+        var ss = {
+          sub: hasCmp ? 'นับจากหน่วยธุรกิจ (สถานี × ธุรกิจ) ที่มีเอกสารขายในช่วงนั้นจริง — ' + c.scope
+                      : 'ยังไม่มีช่วงเปรียบเทียบ (ข้อมูลเริ่ม 1 ม.ค. 2569) จึงยังคำนวณ same-store ไม่ได้',
+          caveat: 'หน่วยที่ไม่มีเอกสารในช่วงหนึ่งอาจเป็นสาขาที่ยังลงยอดไม่ครบ ไม่ใช่สาขาปิดเสมอไป — ตรวจความครบถ้วนรายสาขาที่หน้าสถานะข้อมูลก่อนสรุป',
+          buckets: [
+            { label: 'สาขาเดิม — มียอดทั้งสองช่วง', color: '#6DC24D', value: hasCmp ? both.length + ' หน่วย' : 'N/A',
+              note: hasCmp ? 'ยอดช่วงนี้ ' + S.mb(ssCur) + ' · ' + S.diffTxt(ssCur, ssPrev) : 'ต้องมีช่วงเปรียบเทียบก่อน' },
+            { label: 'มียอดเฉพาะช่วงที่เลือก', color: '#F5B82E', value: hasCmp ? onlyNew.length + ' หน่วย' : 'N/A',
+              note: !hasCmp ? '–' : (onlyNew.length ? 'ยอดช่วงนี้ ' + S.mb(onlyNew.reduce(function (s, r) { return s + r[1]; }, 0)) + ' · ' + onlyNew.slice(0, 3).map(function (r) { return nameOf(r[0]); }).join(' · ') : 'ไม่มีหน่วยธุรกิจที่เพิ่งมียอดในช่วงนี้') },
+            { label: 'ไม่มียอดในช่วงที่เลือก', color: '#B42318', value: hasCmp ? onlyOld.length + ' หน่วย' : 'N/A',
+              note: !hasCmp ? '–' : (onlyOld.length ? 'ยอดช่วงเทียบ ' + S.mb(onlyOld.reduce(function (s, r) { return s + r[1]; }, 0)) + ' · ' + onlyOld.slice(0, 3).map(function (r) { return nameOf(r[0]); }).join(' · ') : 'ไม่มี') }
+          ]
+        };
+
+        /* --- สินค้าที่เปลี่ยนแปลงมากที่สุด --- */
+        var pk = function (l) { return l[3]; };
+        var p1 = S.groupBy(c.cur, pk), p0 = S.groupBy(c.cmp, pk);
+        var prod = Array.from(new Set(Array.from(p1.keys()).concat(Array.from(p0.keys())))).map(function (i) {
+          return { i: i, cur: p1.get(i) || 0, prev: p0.get(i) || 0, d: (p1.get(i) || 0) - (p0.get(i) || 0) };
+        }).filter(function (r) { return r.d; }).sort(function (x, y) { return y.d - x.d; });
+        var moverRows = function (rs) {
+          return rs.map(function (r) {
+            var P = S.P[r.i];
+            return { name: P.co + ' · ' + P.name, meta: P.group + (P.sub ? ' · ' + P.sub : ''),
+              delta: S.sgn(r.d) + S.mb(Math.abs(r.d)), dStyle: dSt(r.d), cur: 'ช่วงนี้ ' + S.mb(r.cur) + ' · ก่อน ' + S.mb(r.prev) };
+          });
+        };
+        var movers = hasCmp ? [
+          { title: 'สินค้าที่ยอดเพิ่มมากที่สุด', rows: moverRows(prod.slice(0, 6)), note: 'เทียบ ' + c.cmpLabel + ' · เรียงตามผลต่างเป็นบาท' },
+          { title: 'สินค้าที่ยอดลดมากที่สุด', rows: moverRows(prod.slice(-6).reverse()), note: 'ยอดลดอาจมาจากราคาหรือปริมาณ — ดูแยกราคา/ปริมาณที่หน้าธุรกิจและสินค้า' }
+        ] : [{ title: 'สินค้าที่เปลี่ยนแปลงมากที่สุด', rows: [], note: 'ยังไม่มีช่วงเปรียบเทียบ (ข้อมูลเริ่ม 1 ม.ค. 2569)' }];
+
+        /* --- KPI --- */
+        var nonoil = S.sum(c.cur.filter(function (l) { return S.grp(l) === 'Non-Oil'; }));
+        var nonoilP = hasCmp ? S.sum(c.cmp.filter(function (l) { return S.grp(l) === 'Non-Oil'; })) : null;
+        var share = c.tc ? nonoil / c.tc * 100 : 0, shareP = c.tp ? nonoilP / c.tp * 100 : null;
+        var ws = S.sum(c.cur.filter(function (l) { return l[14] === 1; })), wsP = hasCmp ? S.sum(c.cmp.filter(function (l) { return l[14] === 1; })) : null;
+        var kpis = [
+          { label: 'ยอดขายรวม (ก่อน VAT)', value: S.fmt(c.tc / 1e6 * p, 2), unit: 'ล้านบาท',
+            delta: hasCmp ? S.diffTxt(c.tc, c.tp) : 'ไม่มีช่วงเปรียบเทียบ', dStyle: dSt(hasCmp ? c.tc - c.tp : 0), note: '· ' + c.label },
+          { label: 'การเติบโตสาขาเดิม (same-store)', value: hasCmp && ssPrev ? S.fmt((ssCur - ssPrev) / ssPrev * 100 * p, 1) : '–', unit: hasCmp && ssPrev ? '%' : '',
+            delta: hasCmp ? both.length + ' หน่วยธุรกิจที่มียอดทั้งสองช่วง' : 'N/A', dStyle: 'color: var(--muted)',
+            note: hasCmp ? '· ' + S.mb(ssCur) + ' เทียบ ' + S.mb(ssPrev) : '· ต้องมีช่วงเปรียบเทียบ' },
+          { label: 'สัดส่วน Non-Oil', value: S.fmt(share * p, 1), unit: '%',
+            delta: shareP == null ? 'ไม่มีช่วงเปรียบเทียบ' : (share - shareP >= 0 ? '▲ +' : '▼ −') + S.fmt(Math.abs(share - shareP), 1) + ' จุด',
+            dStyle: dSt(shareP == null ? 0 : share - shareP), note: '· ' + S.mb(nonoil) },
+          { label: 'สัดส่วนค้าส่ง', value: S.fmt((c.tc ? ws / c.tc * 100 : 0) * p, 1), unit: '%',
+            delta: hasCmp ? S.diffTxt(ws, wsP) : 'ไม่มีช่วงเปรียบเทียบ', dStyle: dSt(hasCmp ? ws - wsP : 0), note: '· ' + S.mb(ws) }
+        ];
+        /* ปริมาณ LPG เทียบเท่าลิตร — ค้าปลีกขายเป็นลิตร ค้าส่งขายเป็นกิโลกรัม จึงแปลงด้วย factor ที่ยืนยันแล้วเท่านั้น */
+        var eq = S.lpgLitreEq(c.cur), eqP = hasCmp ? S.lpgLitreEq(c.cmp) : null, facs = Object.keys(eq.factors);
+        if (eq.total || eq.missing) kpis.push({
+          label: 'ปริมาณ LPG เทียบเท่าลิตร', value: S.fmt(eq.total * p, 0), unit: 'ลิตร',
+          delta: hasCmp ? S.diffTxt(eq.total, eqP.total, 'ลิตร') : 'ไม่มีช่วงเปรียบเทียบ', dStyle: dSt(hasCmp ? eq.total - eqP.total : 0),
+          note: '· ลิตรตามเอกสาร ' + S.fmt(eq.litre, 0) + ' + แปลงจาก ' + S.fmt(eq.kg - eq.missing, 0) + ' กก. ด้วย factor ' + (facs.length ? facs.join('/') : '–')
+            + (eq.missing ? ' · ยังไม่แปลง ' + S.fmt(eq.missing, 0) + ' กก. (ไม่มีค่าแปลงที่ยืนยันสำหรับงวด/สาขานั้น)' : '')
+        });
+
+        var limits = [
+          { kpi: 'Customer Lifetime Value (CLV)', status: 'ไม่คำนวณ', why: 'ต้องมีนิยามอายุลูกค้า ต้นทุนต่อลูกค้า และการรวมลูกค้าข้ามบริษัทที่ตรวจรับแล้ว · ยอดซื้อสะสมไม่ใช่ CLV' },
+          { kpi: 'Market Segment', status: 'รอข้อมูล', why: 'ยังไม่มีทะเบียนกลุ่มลูกค้า/พื้นที่ที่ยืนยัน — ไม่สร้าง segment เองจากชื่อลูกค้า' },
+          { kpi: 'YoY ทุกกลุ่มสินค้า', status: 'รอข้อมูล', why: 'ปี 2568 ใน TRCloud มีเฉพาะรายการยกยอดลูกหนี้ · YoY ที่ใช้ได้ตอนนี้มีเฉพาะ LPG หน้าร้านและน้ำมัน STP จากไฟล์ Excel (ดูหน้า Executive)' },
+          { kpi: 'Pipeline · Win Rate · Sales Cycle', status: 'รอข้อมูล', why: 'ไม่พบเอกสาร lead ในระบบ และ SO อย่างเดียวไม่ใช่ pipeline — ต้องมี stage history, Won/Lost, วันที่ มูลค่า และผู้รับผิดชอบ' },
+          { kpi: 'ผลจากเปิด/ปิดสาขา', status: 'รอยืนยัน', why: 'ทะเบียนสาขายังไม่มีวันเปิด–ปิดและวันเปลี่ยนบริษัท/ธุรกิจ · หน้านี้จึงแยกเป็น "มียอดเฉพาะช่วงใดช่วงหนึ่ง" แทนการสรุปว่าเปิดหรือปิด' }
+        ];
+        return Object.assign(th, { pt: stamp(), kpis: kpis, tables: tables, ss: ss, movers: movers, limits: limits });
+      }
+    };
+  };
+
+  /* ================= โครงการและการส่งมอบ — ยังไม่มีแหล่งข้อมูล ================= */
+  var Project = function (Base) {
+    return class extends Base {
+      renderVals() {
+        var th = this.__theme();
+        var need = [
+          { what: 'รายชื่อโครงการและสถานะ', data: 'ทะเบียนโครงการ: ชื่อ ประเภท (เปิดสถานี/ปรับปรุง/เปลี่ยนอุปกรณ์/ขยาย Non-Oil) บริษัท สาขา เจ้าของงาน วันเริ่ม–กำหนดเสร็จ สถานะ', src: 'ฝ่ายวิศวกรรม/ก่อสร้าง' },
+          { what: 'Milestone แผนและผลจริง', data: 'แผนแต่ละ milestone วันที่ทำได้จริง และวันที่คาดว่าจะเสร็จที่ผู้ควบคุมงานยืนยัน', src: 'ฝ่ายวิศวกรรม' },
+          { what: 'งานเกินกำหนดและสาเหตุ', data: 'รายการงานที่เลยกำหนด สาเหตุ ผู้รับผิดชอบ และงานถัดไป', src: 'ฝ่ายวิศวกรรม' },
+          { what: 'งบและการใช้งบ', data: 'งบอนุมัติรายโครงการ · เลขที่ PO · ค่าใช้จ่ายที่รับรู้ · สินทรัพย์ที่ตั้งขึ้น · เงินจ่ายจริง (แยกสี่ฐานนี้ออกจากกัน)', src: 'TRCloud (ต้องผูกรหัสโครงการกับเอกสาร) + ฝ่ายบัญชี' },
+          { what: 'Resource Utilization', data: 'กำลังคนที่มี ชั่วโมงที่จัดสรร และชั่วโมงทำงานจริงรายคน/ทีม', src: 'ฝ่ายบุคคล / ระบบลงเวลา' },
+          { what: 'ผลหลังเปิดใช้', data: 'วันเปิดใช้งานจริงของสาขา/อุปกรณ์ เพื่อเทียบยอดขายก่อน–หลัง', src: 'ฝ่ายปฏิบัติการ' }
+        ];
+        var proxy = [
+          { title: 'ภาระจัดซื้อและกำหนดจ่าย', body: 'เจ้าหนี้และกำหนดชำระรายเอกสารจาก TRCloud — ใช้ดูภาระเงินจ่ายของงานที่สั่งซื้อไปแล้ว แต่ยังไม่ได้แยกตามโครงการ', href: 'Cash.dc.html', link: 'ไปหน้าเงินทุนหมุนเวียน' },
+          { title: 'สาขาที่ยอดเปลี่ยนแปลงผิดปกติ', body: 'หน้ากลยุทธ์แยกสาขาเดิม สาขาที่เพิ่งมียอด และสาขาที่ไม่มียอดในช่วงนี้ — ใช้ตั้งคำถามกับงานเปิด/ปรับปรุงสาขาได้', href: 'Strategy.dc.html', link: 'ไปหน้ากลยุทธ์' },
+          { title: 'ความครบถ้วนของการลงยอดรายสาขา', body: 'สาขาที่ยังลงยอดไม่ครบจะทำให้ตัวเลขก่อน–หลังเปิดใช้งานผิด ตรวจที่หน้าสถานะข้อมูลก่อนสรุปผลโครงการ', href: 'Issues.dc.html', link: 'ไปหน้าสถานะข้อมูล' }
+        ];
+        return Object.assign(th, { pt: stamp(), need: need, proxy: proxy });
+      }
+    };
+  };
+
+  /* ================= สถานะข้อมูล: ความครบถ้วนรายหน่วย + ความพร้อม KPI ================= */
+  var PILL = function (c) { return 'font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; background: ' + c[0] + '; color: ' + c[1]; };
+  var PILL_OK = PILL(['#E3F2E8', '#1E7A46']), PILL_WAIT = PILL(['#FDF1D3', '#7A5300']), PILL_BAD = PILL(['#FCE4E1', '#B42318']), PILL_NA = PILL(['var(--tint)', 'var(--muted)']);
+  var Issues = function (Base) {
+    return class extends Base {
+      renderVals() {
+        var th = this.__theme(), base = super.renderVals() || {};
+        var end = S.MAXDAY, start = Math.max(0, end - 29);
+        var rows = S.U.map(function (u, i) {
+          var last = S.unitLast[i], days = S.unitDaysIn(i, start, end);
+          var st, sty;
+          if (last < 0) { st = 'ไม่พบรายการ'; sty = PILL_NA; }
+          else if (last >= end - 1) { st = 'เป็นปัจจุบัน'; sty = PILL_OK; }
+          else if (last >= end - 4) { st = 'ช้า ' + (end - last) + ' วัน'; sty = PILL_WAIT; }
+          else { st = 'ค้าง ' + (end - last) + ' วัน'; sty = PILL_BAD; }
+          return { co: u.company, unit: S.unitLabel(u), src: u.expected_source || 'ไม่ระบุ',
+            last: last < 0 ? '–' : S.thDate(last), days: last < 0 ? '–' : days + ' / 30', status: st, stStyle: sty,
+            _lag: last < 0 ? 999 : end - last, _days: days };
+        }).sort(function (a, b) { return b._lag - a._lag || a.co.localeCompare(b.co); });
+        var nOk = rows.filter(function (r) { return r._lag <= 1; }).length;
+        var nLate = rows.filter(function (r) { return r._lag > 1 && r._lag < 900; }).length;
+        var nNone = rows.filter(function (r) { return r._lag >= 900; }).length;
+        var cov = {
+          sub: 'นับจากเอกสารขายจริงในชุดข้อมูล · เอกสารล่าสุดของทั้งกลุ่ม ' + S.thDate(end) + ' · หน้าต่างที่ใช้ตรวจ ' + S.thDate(start) + '–' + S.thDate(end),
+          caveat: 'ไม่มีเอกสารไม่เท่ากับยอดขายเป็นศูนย์ และข้อมูลยังไม่ครบไม่เท่ากับยอดขายลดจริง — สาขาที่ขึ้นว่า "ค้าง" ให้ตรวจการลงยอดก่อนนำไปเทียบเป้าหรือเทียบเดือน',
+          sum: [{ label: 'หน่วยที่เป็นปัจจุบัน', value: nOk + ' / ' + rows.length, color: '#6DC24D', note: 'มีเอกสารภายใน 1 วันล่าสุด' },
+                { label: 'หน่วยที่ลงยอดช้า', value: String(nLate), color: '#F5B82E', note: 'มีเอกสารแล้วแต่ไม่ถึงวันล่าสุด' },
+                { label: 'หน่วยที่ไม่พบรายการ', value: String(nNone), color: '#C49A76', note: 'อยู่ในทะเบียนสาขาแต่ยังไม่มีเอกสารในชุดนี้' }],
+          rows: rows,
+          csv: function () { S.csv('STAR_ความครบถ้วนรายหน่วย.csv', ['บริษัท', 'สาขา · ธุรกิจ', 'แหล่งที่คาด', 'เอกสารล่าสุด', 'วันที่มีเอกสารใน 30 วันล่าสุด', 'สถานะ'],
+            rows.map(function (r) { return [r.co, r.unit, r.src, r.last, r._days, r.status]; })); }
+        };
+        var R = function (g, k, s, w) { return { group: g, kpi: k, status: s, why: w,
+          stStyle: s === 'ใช้ได้แล้ว' ? PILL_OK : s === 'รอยืนยัน' ? PILL_WAIT : s === 'ไม่เหมาะกับบริบท' ? PILL_NA : PILL_BAD }; };
+        var ready = [
+          R('Executive', 'Revenue (ยอดขายก่อน VAT หักใบลดหนี้)', 'ใช้ได้แล้ว', 'IV3 + CN3 รายบรรทัดของทั้งสามบริษัท · กันเอกสารซ้ำด้วย บริษัท+รายงาน+item_id'),
+          R('Executive', 'Profit', 'รอยืนยัน', 'มีกำไรรายสถานีจากไฟล์ P&L (ก.ย.–ต.ค. 2569) เฉพาะ STG/STP · API งบกำไรขาดทุนยังติดแพ็กเกจ Datawarehouse · ต้นทุนในรายงานขายบางบรรทัดเป็นศูนย์ จึงไม่ใช้เป็นกำไรจริง'),
+          R('Executive', 'Cash / Cash Flow', 'รอข้อมูล', 'รายงาน Bank Statement ไม่คืนรายการในช่วงที่ตรวจ · ยอดขายเงินสดไม่ใช่เงินสดคงเหลือ และยอดทะเบียนธนาคารไม่ใช่เงินพร้อมใช้'),
+          R('Executive', 'Pipeline', 'รอข้อมูล', 'ไม่พบเอกสาร lead ใน connection ที่ตรวจ · SO อย่างเดียวไม่ใช่ pipeline'),
+          R('Executive', 'New Customers', 'รอยืนยัน', 'ต้องตกลงนิยามก่อน — บัญชีเงินสดรวมไม่ใช่ลูกค้าหนึ่งราย และลูกค้าที่เพิ่งปรากฏในชุดข้อมูลอาจไม่ใช่ลูกค้าใหม่จริง'),
+          R('Sales', 'ยอดขาย ปริมาณ ราคาเฉลี่ย และ mix', 'ใช้ได้แล้ว', 'แยกน้ำมัน LPG NGV Non-Oil และค้าปลีก/ค้าส่ง · ปริมาณรวมเฉพาะบรรทัดที่หน่วยตรงกับกฎสินค้า'),
+          R('Sales', 'MoM', 'ใช้ได้แล้ว', 'เทียบช่วงยาวเท่ากันก่อนหน้า และเตือนเมื่อช่วงที่เลือกยังไม่จบเดือน'),
+          R('Sales', 'YoY', 'รอข้อมูล', 'ปี 2568 ใน TRCloud มีเฉพาะรายการยกยอดลูกหนี้ · ที่ใช้ได้ตอนนี้คือ LPG หน้าร้านและน้ำมัน STP จากไฟล์ Excel เท่านั้น'),
+          R('Sales', 'Win Rate · Sales Cycle', 'รอข้อมูล', 'ต้องมี stage history, Won/Lost, วันที่เริ่ม–ปิด มูลค่า และผู้รับผิดชอบ'),
+          R('Finance', 'Gross Profit / Gross Margin รายสถานี', 'รอยืนยัน', 'จากไฟล์ P&L รายสถานี ก.ย.–ต.ค. 2569 (STG/STP) · ยังไม่ครอบคลุม TWP และยังไม่กระทบยอดกับบัญชีทุกเดือน'),
+          R('Finance', 'ลูกหนี้ค้าส่งและอายุหนี้', 'ใช้ได้แล้ว', 'get_receivable_due รายเอกสาร · แยกลูกหนี้ค้าส่งออกจากยอดรอ settlement'),
+          R('Finance', 'เจ้าหนี้และกำหนดจ่าย', 'ใช้ได้แล้ว', 'get_payable_due รายเอกสาร'),
+          R('Finance', 'Cash Flow ตามฐานรับจ่ายจริง', 'รอข้อมูล', 'ต้องมี statement ธนาคารและการแยกโอนภายในกลุ่มออกก่อน'),
+          R('Project', 'สถานะโครงการ · งานล่าช้า · Resource Utilization', 'รอข้อมูล', 'ไม่มีทะเบียนโครงการ milestone หรือชั่วโมงทำงานในแหล่งที่เข้าถึงได้ (ดูหน้าโครงการ)'),
+          R('Strategic', 'Growth ตามบริษัท ธุรกิจ สินค้า ช่องทาง', 'ใช้ได้แล้ว', 'คำนวณจากเอกสารขายตามตัวกรองเดียวกับทุกหน้า'),
+          R('Strategic', 'Same-store growth', 'ใช้ได้แล้ว', 'เทียบเฉพาะหน่วยธุรกิจที่มีเอกสารทั้งสองช่วง · ยังไม่รวมวันเปิด–ปิดสาขาเพราะทะเบียนยังไม่มีวันที่'),
+          R('Strategic', 'Market Segment', 'รอข้อมูล', 'ยังไม่มีทะเบียนกลุ่มลูกค้า/พื้นที่ที่ยืนยัน'),
+          R('Strategic', 'Customer Lifetime Value', 'ไม่เหมาะกับบริบท', 'ยังไม่มีนิยามอายุลูกค้าและต้นทุนต่อลูกค้า · ยอดซื้อสะสมไม่ใช่ CLV'),
+          R('ผลงานเทียบเป้า', 'เป้า ผลจริง Achievement รายสาขา/AM', 'ใช้ได้แล้ว', 'เป้าและการแบ่งเขตจากไฟล์ Operation · ยอด MTD จาก TRCloud (บางสาขาใช้ตัวเลข Excel)'),
+          R('ผลงานเทียบเป้า', 'คะแนนความเสี่ยงรวม', 'ไม่เหมาะกับบริบท', 'ซ้ำกับงานฝ่ายความเสี่ยง — ใช้สถานะเทียบเป้าและความครบถ้วนของข้อมูลแทน')
+        ];
+        /* กฎแปลงหน่วย LPG และฐาน VAT — จาก config/lpg_factor.csv (data/lpg.json) */
+        var L = S.lpg, ex = L && L.rows.length ? L.rows[0].factor : null;
+        var lpg = !L ? { applies: 'ยังไม่มีไฟล์ค่าแปลงหน่วย (data/lpg.json) — รัน python3 scripts/build_lpg.py', formulas: [], rows: [], vat: '', example: '' } : {
+          applies: L.applies, formulas: L.formulas, vat: L.vat_rule,
+          example: ex ? ('ตัวอย่างทวนสูตร: ต้นทุน 24.64 บาท/กก. รวม VAT 7% · ก่อน VAT ต่อลิตร = 24.64 ÷ 1.07 ÷ ' + ex + ' ≈ ' + (24.64 / 1.07 / ex).toFixed(2) + ' บาท/ลิตร (เป็นตัวอย่างวิธีคิด ไม่ใช่ราคาหรืออัตราภาษีที่ตรึงไว้)') : '',
+          rows: L.rows.map(function (r) {
+            var sc = [r.co === '*' ? 'ทุกบริษัท' : r.co, r.station === '*' ? 'ทุกสาขา' : r.station, r.product === '*' ? 'ทุกสินค้า' : r.product].join(' · ');
+            return { scope: sc, period: r.from + ' – ' + (r.to || 'ปัจจุบัน'), factor: S.fmt(r.factor, 2), source: r.source, by: r.by + (r.at ? ' (' + r.at + ')' : '') };
+          })
+        };
+        return Object.assign(base, th, { cov: cov, ready: ready, lpg: lpg });
+      }
+    };
+  };
+
+  return { 'Main.dc.html': Main, 'Products.dc.html': Products, 'Stations.dc.html': Stations, 'Wholesale.dc.html': Wholesale, 'Profit.dc.html': Profit, 'Cash.dc.html': Cash, 'Ops.dc.html': Ops, 'Strategy.dc.html': Strategy, 'Project.dc.html': Project, 'Issues.dc.html': Issues };
 })();
