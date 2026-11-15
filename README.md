@@ -13,7 +13,7 @@
 | การเงิน | กำไรรายสถานี · เงินทุนหมุนเวียน | `Profit` · `Cash` |
 | โครงการ | โครงการและการส่งมอบ (ยังไม่มีแหล่งข้อมูล) | `Project` |
 | กลยุทธ์ | ภาพรวมการเติบโต | `Strategy` |
-| ผลงานเทียบเป้า | Operation | `Ops` |
+| ปฏิบัติการ | ผลงานเทียบเป้า · ซ่อมบำรุง (Factorium) | `Ops` · `Maint` |
 | สถานะข้อมูล | ประเด็นติดตามและข้อมูลต้นทาง | `Issues` |
 
 โครงเมนูกำหนดที่เดียวใน `GROUPS` ของ `design/patch_pages.py` · หน้าเดิม 8 หน้าอยู่ครบ ไม่มีรายงานใดถูกตัดทิ้ง
@@ -24,8 +24,8 @@
 |---|---|---|
 | `public/` | ✅ | `app.js` = ตัวแสดงผลหน้าดีไซน์ (.dc.html) + เปลี่ยนหน้า + ส่งออก CSV · `gate.js` · ฟอนต์ IBM Plex Sans Thai / Outfit · โลโก้ |
 | `static/` | ✅ | `auth-config.js` (client/tenant/group/keyShareUrl — ไม่มีความลับ), `gate.css` |
-| `config/` | ✅ | `stations.csv`, `product_rules.csv`, `channel_rules.csv`, `lpg_factor.csv` (ค่าแปลงหน่วย LPG พร้อมวันที่มีผล) |
-| `scripts/` | ✅ | `build_model.py`, `build_wc.py`, `build_stock.py`, `build_lpg.py`, `build_pages.js` (design/project_live → data/pages.json), `build-static.js` (เข้ารหัส → site/), `site_test.js`, `validate.py`, `serve.js` |
+| `config/` | ✅ | `stations.csv`, `product_rules.csv`, `channel_rules.csv`, `lpg_factor.csv` (ค่าแปลงหน่วย LPG พร้อมวันที่มีผล), `maint_departments.csv` (map แผนก Factorium → สถานี) |
+| `scripts/` | ✅ | `build_model.py`, `build_wc.py`, `build_stock.py`, `build_lpg.py`, `import_maintenance.py`, `build_pages.js` (design/project_live → data/pages.json), `build-static.js` (เข้ารหัส → site/), `site_test.js`, `validate.py`, `serve.js` |
 | `site/` | ✅ | ผลลัพธ์ที่ขึ้น GitHub Pages — มีแต่ข้อมูล**เข้ารหัส** |
 | `design/` | ❌ | ไฟล์จาก Claude Design (หน้า .dc.html + สคริปต์สร้างตัวเลข) มีตัวเลขจริงไม่เข้ารหัส (`.gitignore`) |
 | `raw/`, `data/` | ❌ | ข้อมูลดิบ TRCloud และข้อมูลที่ยังไม่เข้ารหัส (`.gitignore`) |
@@ -35,7 +35,7 @@
 1. ดึง IV3 + CN3 (และ AR/AP) ของ 3 บริษัทจาก TRCloud ด้วย user อ่านอย่างเดียว · รับไฟล์ Excel ของ Operation (เป้า/AM, ฐานปีก่อน) และ P&L รายสถานี
 2. รันสคริปต์ใน `design/scripts/` ตาม `design/HANDOFF.md` (Rebuild pipeline) → อัปเดต `design/project/*.dc.html`
 3. ดึง IV3/CN3 และลูกหนี้/เจ้าหนี้ (get_receivable_due / get_payable_due) ด้วย user อ่านอย่างเดียว เก็บใน `raw/` แล้วรัน `python3 scripts/build_model.py` (→ `data/model.json`) และ `python3 scripts/build_wc.py` (→ `data/wc.json`) และ `python3 scripts/build_stock.py` (ใบปรับปรุงสต๊อกจากการตรวจนับ LPG/น้ำมัน จาก search_gr keyword=ปรับปรุง → `data/stock.json`)
-   และ `python3 scripts/build_lpg.py` (ค่าแปลงหน่วย LPG จาก `config/lpg_factor.csv` → `data/lpg.json`)
+   และ `python3 scripts/build_lpg.py` (ค่าแปลงหน่วย LPG → `data/lpg.json`) และ `python3 scripts/import_maintenance.py raw/<ไฟล์ Factorium>.xlsx` (ใบงานซ่อมบำรุง → `data/maint.json`)
    จากนั้น `python3 design/patch_pages.py` (ใส่ตัวกรอง ช่องข้อมูล เมนู 7 หมวด และสร้างหน้าโครงการ/กลยุทธ์ → `design/project_live`) และ `node scripts/build_pages.js` → `data/pages.json`
 4. `node scripts/build-static.js --key <path กุญแจนอก repo> --out site`
 5. ตรวจใน GitHub Desktop ว่าเปลี่ยนเฉพาะ `site/` (และโค้ดที่แก้) และ**ไม่มี** `design/`, `data/`, `raw/` → Commit → Push → GitHub Actions เผยแพร่เอง · ผู้ใช้กด Ctrl+F5

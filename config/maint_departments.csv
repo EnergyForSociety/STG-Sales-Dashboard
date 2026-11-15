@@ -1,0 +1,30 @@
+« map แผนกของเครื่องจักรในระบบซ่อมบำรุง Factorium → บริษัทและรหัสสถานีใน config/stations.csv »
+« แถวที่ station_id ว่าง = ยังไม่ map (หน้าเว็บจะแสดงเป็น "ยังไม่ map" ไม่ตัดทิ้งและไม่เดา) »
+« แถวที่ company ว่าง = ไม่ใช่บริษัทในกลุ่ม STAR (เช่น HEA) — ใบงานจะถูกแยกออกและรายงานจำนวนไว้ »
+factorium_department,company,station_id,note
+STG-ลิ้มบางปะหัน,STG,STG-02,
+STG-สยามทรัพย์รุ่งเรือง,STG,STG-03,ชื่อในระบบซ่อมบำรุงมีคำว่า "สยาม" นำหน้า
+STG-สยามบิ๊กแก๊ส,STG,STG-04,ชื่อในระบบซ่อมบำรุงมีคำว่า "สยาม" นำหน้า
+STG-ซันไชน์,STG,STG-05,
+STG-ลิ้มวังน้อย,STG,STG-06,
+STG-ลิ้มอโยธยา,STG,STG-07,
+STG-ลิ้มเสนา,STG,STG-11,
+STG-มังกรสยาม,STG,STG-12,
+STG-ธูปะเตมีย์,STG,STG-13,
+STG-คลองหลวง,STG,STG-14,
+STG-บางบาล,STG,STG-15,
+STG-เจ.อาร์.,STG,STG-17,
+STG-ลิ้มสุวินทวงศ์,STG,STG-19,
+STG-สยามสิริวาณิชย์,STG,STG-24,
+STG-นำพารวย,STG,STG-25,
+STG-ลิ้มพระราม5,STG,STG-RAMA5,สถานีเดียวมีหลายธุรกิจ (น้ำมัน PTT + Café Amazon + 7-Eleven)
+STG-พิบูลสงคราม,STG,STG-PIBUL,
+STP-เจ้าปลุก,STP,STP-01,
+STP-เขาจีนแล,STP,STP-02,
+STP-สนามบินตาก,STP,STP-04,
+STP-ตาก-ลำปาง,STP,STP-05,
+STP-นครหลวง,STP,STP-07,
+STP-ฝ่ายธุรกิจค้าปลีก,STP,STP-HQ,งานส่วนกลางของ STP ไม่ใช่สถานี
+TWP-ธวัชภิญโญ(ขาเข้า),TWP,TWP-IN,
+TWP-ธวัชภิญโญ(ขาออก),TWP,TWP-OUT,
+HEA-Account&Finance,,,ไม่ใช่บริษัทในกลุ่ม STAR — แยกออกจากรายงาน

@@ -827,6 +827,7 @@ window.STAR_PAGES = (function () {
         var proxy = [
           { title: 'ภาระจัดซื้อและกำหนดจ่าย', body: 'เจ้าหนี้และกำหนดชำระรายเอกสารจาก TRCloud — ใช้ดูภาระเงินจ่ายของงานที่สั่งซื้อไปแล้ว แต่ยังไม่ได้แยกตามโครงการ', href: 'Cash.dc.html', link: 'ไปหน้าเงินทุนหมุนเวียน' },
           { title: 'สาขาที่ยอดเปลี่ยนแปลงผิดปกติ', body: 'หน้ากลยุทธ์แยกสาขาเดิม สาขาที่เพิ่งมียอด และสาขาที่ไม่มียอดในช่วงนี้ — ใช้ตั้งคำถามกับงานเปิด/ปรับปรุงสาขาได้', href: 'Strategy.dc.html', link: 'ไปหน้ากลยุทธ์' },
+          { title: 'งานเปลี่ยนอุปกรณ์และปรับปรุงสถานี', body: 'ใบงานจากระบบซ่อมบำรุง Factorium มีงานเปลี่ยนอุปกรณ์ ปรับปรุงอาคาร และงานระบบ พร้อมสาขา ผู้รับผิดชอบ และจำนวนวันที่ค้าง — ใช้ติดตามงานหน้างานได้ แต่ยังไม่ใช่ทะเบียนโครงการ', href: 'Maint.dc.html', link: 'ไปหน้าซ่อมบำรุง' },
           { title: 'ความครบถ้วนของการลงยอดรายสาขา', body: 'สาขาที่ยังลงยอดไม่ครบจะทำให้ตัวเลขก่อน–หลังเปิดใช้งานผิด ตรวจที่หน้าสถานะข้อมูลก่อนสรุปผลโครงการ', href: 'Issues.dc.html', link: 'ไปหน้าสถานะข้อมูล' }
         ];
         return Object.assign(th, { pt: stamp(), need: need, proxy: proxy });
@@ -905,5 +906,116 @@ window.STAR_PAGES = (function () {
     };
   };
 
-  return { 'Main.dc.html': Main, 'Products.dc.html': Products, 'Stations.dc.html': Stations, 'Wholesale.dc.html': Wholesale, 'Profit.dc.html': Profit, 'Cash.dc.html': Cash, 'Ops.dc.html': Ops, 'Strategy.dc.html': Strategy, 'Project.dc.html': Project, 'Issues.dc.html': Issues };
+  /* ================= ปฏิบัติการ › ซ่อมบำรุงสถานี (Factorium) =================
+     ข้อมูลจากไฟล์ส่งออกของระบบซ่อมบำรุง ไม่ใช่เอกสารบัญชี · ช่วงวันที่ของไฟล์ต่างจากข้อมูลขาย
+     จึงมีตัวเลือกช่วงเวลาของตัวเอง แต่ใช้ตัวกรองบริษัท/สาขาร่วมกับหน้าอื่น */
+  var Maint = function (Base) {
+    return class extends Base {
+      __filters() {
+        var SS = S.S, D = S.data.maint || { rows: [] };
+        var kinds = Array.from(new Set(D.rows.map(function (r) { return r.kind; }).filter(Boolean))).sort();
+        return { rows: [[
+          { label: 'ช่วงเวลา (วันที่แจ้งซ่อม)', flex: '1 1 220px', options: function () { return [['30', '30 วันล่าสุด'], ['90', '90 วันล่าสุด'], ['365', '12 เดือนล่าสุด'], ['', 'ทั้งหมดในไฟล์']]; },
+            get: function () { return SS.mtPeriod; }, set: function (v) { SS.mtPeriod = v; } },
+          S.F.cos(), S.F.station(),
+          { label: 'สถานะใบงาน', options: function () { return [['', 'ทุกสถานะ'], ['open', 'ยังไม่ปิด'], ['overdue', 'ค้างเกิน SLA'], ['closed', 'ปิดงานแล้ว'], ['rejected', 'ถูกปฏิเสธ']]; },
+            get: function () { return SS.mtStatus; }, set: function (v) { SS.mtStatus = v; } },
+          { label: 'ประเภทงาน', flex: '1 1 220px', options: function () { return [['', 'ทุกประเภท']].concat(kinds.map(function (k) { return [k, k]; })); },
+            get: function () { return SS.mtKind; }, set: function (v) { SS.mtKind = v; } }]],
+          reset: function () { SS.mtPeriod = '90'; SS.mtStatus = ''; SS.mtKind = ''; SS.station = ''; var d = S.defaults(); SS.cos = d.cos; },
+          note: function () { return 'ใบงานจากระบบ Factorium · ไฟล์ล่าสุดนำเข้าเมื่อ ' + ((S.data.maint || {}).imported_at || '–').slice(0, 16).replace('T', ' ')
+            + ' · ตัวกรองบริษัทและสาขาใช้ร่วมกับหน้าอื่น ส่วนช่วงเวลาใช้ของหน้านี้เพราะไฟล์ซ่อมบำรุงมีช่วงวันที่ต่างจากข้อมูลขาย'; } };
+      }
+      renderVals() {
+        var th = this.__theme(), p = th.p, SS = S.S, D = S.data.maint;
+        if (!D || !D.rows.length) return Object.assign(th, { pt: stamp(), mt: { range: 'ยังไม่มีไฟล์ใบงานซ่อมบำรุง', kpis: [], stations: [], breaks: [], open: [], bySub: '', openSub: '', caveat: 'รัน python3 scripts/import_maintenance.py raw/<ไฟล์ Factorium>.xlsx', csvStation: function () {}, csvOpen: function () {} } });
+        var day = function (iso) { return iso ? Math.round((Date.parse(iso.slice(0, 10) + 'T00:00:00Z') - Date.parse(D.to + 'T00:00:00Z')) / 864e5) : null; };
+        var asof = D.to, cut = SS.mtPeriod ? -(+SS.mtPeriod) : -1e9;
+        var age = function (r) { return r.reported ? -day(r.reported) : null; };
+        var overdue = function (r) { return !r.closed && !r.rejected && r.sla != null && age(r) > r.sla; };
+        var stName = function (id) { var u = S.U.filter(function (u) { return u.station_id === id; })[0]; return u ? u.station_name : (id || 'ไม่ระบุ'); };
+        var inCo = function (r) { return !r.co || SS.cos.indexOf(r.co) >= 0; };
+        var inSt = function (r) { return !SS.station || SS.station.slice(0, 2) === 'u:' || r.station === SS.station; };
+        var inKind = function (r) { return !SS.mtKind || r.kind === SS.mtKind; };
+        var inStatus = function (r) { return !SS.mtStatus || (SS.mtStatus === 'open' ? !r.closed && !r.rejected : SS.mtStatus === 'closed' ? r.closed : SS.mtStatus === 'rejected' ? r.rejected : overdue(r)); };
+        var base = D.rows.filter(function (r) { return inCo(r) && inSt(r) && inKind(r) && inStatus(r); });
+        var inPeriod = function (r) { return r.reported && day(r.reported) >= cut; };
+        var rep = base.filter(inPeriod);                                   // แจ้งในช่วง
+        var closedIn = base.filter(function (r) { return r.done && day(r.done) >= cut; });
+        var open = base.filter(function (r) { return !r.closed && !r.rejected; });
+        var over = open.filter(overdue);
+        var safety = open.filter(function (r) { return /^เกี่ยวข้องกับความปลอดภัย/.test(r.safety); });
+        var stopUsed = new Set(D.rows.map(function (r) { return r.stopped; })).size > 1;   // ช่อง "เครื่องจักรหยุด" ถูกใช้จริงหรือไม่
+        var mins = closedIn.map(function (r) { return r.min_close; }).filter(function (v) { return v != null && v > 0; });
+        var avgDays = mins.length ? mins.reduce(function (a, b) { return a + b; }, 0) / mins.length / 1440 : null;
+        var perLabel = SS.mtPeriod ? SS.mtPeriod + ' วันล่าสุด' : 'ทั้งหมดในไฟล์';
+
+        var kpis = [
+          { label: 'ใบงานค้างอยู่', value: S.fmt(Math.round(open.length * p), 0), unit: 'ใบงาน', color: open.length ? '#F5B82E' : '#6DC24D',
+            note: 'ณ ' + S.thDate(S.dayOf(asof)) + ' · ยังไม่ปิดและไม่ถูกปฏิเสธ' },
+          { label: 'ค้างเกิน SLA', value: S.fmt(Math.round(over.length * p), 0), unit: 'ใบงาน', color: over.length ? '#B42318' : '#6DC24D',
+            note: over.length ? 'SLA อ่านจากระดับความด่วนในใบงาน · ค้างนานสุด ' + S.fmt(Math.max.apply(null, over.map(age)), 0) + ' วัน' : 'ไม่มีใบงานเกิน SLA' },
+          { label: 'งานด้านความปลอดภัยที่ยังค้าง', value: S.fmt(Math.round(safety.length * p), 0), unit: 'ใบงาน', color: safety.length ? '#B42318' : '#6DC24D',
+            note: 'ใบงานที่ติดธง "เกี่ยวข้องกับความปลอดภัย" และยังไม่ปิด' },
+          { label: 'แจ้งใหม่ (' + perLabel + ')', value: S.fmt(Math.round(rep.length * p), 0), unit: 'ใบงาน', color: '#3E4A7C', note: 'ตามวันที่แจ้งซ่อม' },
+          { label: 'ปิดงาน (' + perLabel + ')', value: S.fmt(Math.round(closedIn.length * p), 0), unit: 'ใบงาน', color: '#6DC24D',
+            note: avgDays == null ? 'ยังไม่มีเวลาปิดงานในช่วงนี้' : 'เฉลี่ยแจ้ง→ปิด ' + S.fmt(avgDays, 1) + ' วัน (' + mins.length + ' ใบงานที่มีเวลาครบ)' }
+        ];
+
+        var TD = 'padding: 10px; border-bottom: 1px solid var(--line); text-align: right; font-family: \'Outfit\', sans-serif';
+        var cell = function (v, warn) { return { v: v || '–', st: TD + (warn && v ? '; color: ' + DOWN + '; font-weight: 600' : '') }; };
+        var byStation = {};
+        base.forEach(function (r) {
+          var k = (r.co || '?') + '|' + (r.station || '?');
+          var x = byStation[k] = byStation[k] || { co: r.co || '–', name: stName(r.station) + (r.station ? '' : ' (' + r.dept + ')'), rep: 0, closed: 0, open: 0, over: 0, oldest: 0 };
+          if (inPeriod(r)) x.rep++;
+          if (r.done && day(r.done) >= cut) x.closed++;
+          if (!r.closed && !r.rejected) { x.open++; if (overdue(r)) x.over++; x.oldest = Math.max(x.oldest, age(r) || 0); }
+        });
+        var stations = Object.keys(byStation).map(function (k) { return byStation[k]; })
+          .sort(function (a, b) { return b.over - a.over || b.open - a.open || b.rep - a.rep; })
+          .map(function (x) { return { co: x.co, name: x.name, cells: [cell(x.rep), cell(x.closed), cell(x.open), cell(x.over, true), cell(x.oldest)] }; });
+
+        var group = function (title, sub, keyf, n) {
+          var m = {};
+          base.forEach(function (r) { var k = keyf(r) || 'ไม่ระบุ'; var x = m[k] = m[k] || { all: 0, open: 0 }; x.all++; if (!r.closed && !r.rejected) x.open++; });
+          return { title: title, sub: sub, rows: Object.keys(m).map(function (k) { return { name: k, all: m[k].all, open: m[k].open }; })
+            .sort(function (a, b) { return b.all - a.all; }).slice(0, n)
+            .map(function (r) { return { name: r.name, all: r.all + ' ใบงาน', open: r.open ? 'ค้าง ' + r.open : 'ปิดครบ',
+              openSt: "font-family: 'Outfit', sans-serif; font-weight: 600; color: " + (r.open ? DOWN : UP) }; }) };
+        };
+        var breaks = [
+          group('ตามประเภทงาน', 'ทุกสถานะตามตัวกรอง · ตัวเลขขวาสุดคือที่ยังค้าง', function (r) { return r.kind; }, 8),
+          group('ตามประเภทเครื่องจักร', 'ช่วยดูว่าอุปกรณ์กลุ่มใดเรียกช่างบ่อย', function (r) { return r.mtype; }, 8),
+          group('ตามผู้รับผิดชอบ', 'ชื่อตามที่บันทึกในใบงาน', function (r) { return r.owner; }, 8)
+        ];
+
+        var openSorted = open.slice().sort(function (a, b) { return (age(b) || 0) - (age(a) || 0); });
+        var stPill = function (r) { return overdue(r) ? PILL_BAD : /กำลังซ่อม|รับงาน/.test(r.status) ? PILL_WAIT : PILL_NA; };
+        var openRows = openSorted.slice(0, 12).map(function (r) {
+          return { wo: r.wo, station: stName(r.station), machine: r.machine || '–', symptom: r.symptom || '–',
+            status: r.status, urgency: r.urgency || 'ไม่ระบุ SLA', owner: r.owner || 'ยังไม่มอบหมาย', stStyle: stPill(r),
+            age: S.fmt(age(r), 0), ageSt: TD + (overdue(r) ? '; color: ' + DOWN + '; font-weight: 600' : '') };
+        });
+
+        var mt = {
+          range: 'ใบงาน ' + S.fmt(D.rows.length, 0) + ' ใบ · ' + D.from + ' ถึง ' + D.to + (Object.keys(D.outside_group || {}).length ? ' · แยกใบงานนอกกลุ่มออก ' + Object.keys(D.outside_group).map(function (k) { return k + ' ' + D.outside_group[k]; }).join(', ') : ''),
+          kpis: kpis, stations: stations, breaks: breaks, open: openRows,
+          bySub: 'เรียงตามจำนวนที่เกิน SLA แล้วตามงานค้าง · ' + stations.length + ' สาขา/หน่วยงาน',
+          openSub: 'แสดง ' + openRows.length + ' จาก ' + open.length + ' ใบงานที่ยังไม่ปิด · เรียงจากค้างนานสุด',
+          caveat: 'ช่อง "วันที่คาดว่าจะเสร็จ" ถูกกรอกเพียง ' + D.rows.filter(function (r) { return r.due; }).length + ' จาก ' + D.rows.length
+            + ' ใบงาน จึงยังวัดการส่งมอบตามกำหนดไม่ได้ · ใบงานไม่ได้ผูกกับเลขที่ PO ในระบบบัญชี จึงยังไม่แสดงค่าใช้จ่ายต่อใบงาน'
+            + (stopUsed ? '' : ' · ช่อง "สถานะเครื่องจักรหยุด" ถูกบันทึกเป็น "ยังใช้งานได้" ทุกใบงาน จึงยังวัดเวลาที่อุปกรณ์หยุดใช้งานไม่ได้')
+            + ' · ไม่คำนวณ Resource Utilization จากจำนวนใบงานหรือระยะเวลาเปิด–ปิด',
+          csvStation: function () { S.csv('STAR_ซ่อมบำรุงรายสาขา.csv', ['บริษัท', 'สาขา', 'แจ้งในช่วง', 'ปิดในช่วง', 'ค้างอยู่', 'เกิน SLA', 'ค้างนานสุด (วัน)'],
+            Object.keys(byStation).map(function (k) { var x = byStation[k]; return [x.co, x.name, x.rep, x.closed, x.open, x.over, x.oldest]; })); },
+          csvOpen: function () { S.csv('STAR_ใบงานค้าง.csv', ['ใบงาน', 'บริษัท', 'สาขา', 'สถานะ', 'ระดับความด่วน', 'SLA (วัน)', 'ค้าง (วัน)', 'เครื่องจักร', 'อาการเสีย', 'ผู้แจ้ง', 'ผู้รับผิดชอบ', 'วันที่แจ้ง'],
+            openSorted.map(function (r) { return [r.wo, r.co, stName(r.station), r.status, r.urgency, r.sla == null ? '' : r.sla, age(r), r.machine, r.symptom, r.reporter, r.owner, (r.reported || '').slice(0, 10)]; })); }
+        };
+        return Object.assign(th, { pt: stamp(' · ใบงานซ่อมบำรุงจาก Factorium'), mt: mt });
+      }
+    };
+  };
+
+  return { 'Main.dc.html': Main, 'Products.dc.html': Products, 'Stations.dc.html': Stations, 'Wholesale.dc.html': Wholesale, 'Profit.dc.html': Profit, 'Cash.dc.html': Cash, 'Ops.dc.html': Ops, 'Strategy.dc.html': Strategy, 'Project.dc.html': Project, 'Maint.dc.html': Maint, 'Issues.dc.html': Issues };
 })();

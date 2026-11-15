@@ -10,8 +10,8 @@ const srv = http.createServer((q, r) => { const f = path.join(site, decodeURICom
 
 let pass = 0; const fails = [];
 const ok = (cond, name, detail) => { if (cond) { pass++; console.log('  ✓ ' + name); } else { fails.push(name + (detail ? ' — ' + detail : '')); console.log('  ✗ ' + name + (detail ? ' — ' + detail : '')); } };
-const PAGES = ['Main', 'Products', 'Stations', 'Wholesale', 'Profit', 'Cash', 'Project', 'Strategy', 'Ops', 'Issues'];
-const GROUPS = ['Executive', 'การขาย', 'การเงิน', 'โครงการ', 'กลยุทธ์', 'ผลงานเทียบเป้า', 'สถานะข้อมูล'];
+const PAGES = ['Main', 'Products', 'Stations', 'Wholesale', 'Profit', 'Cash', 'Project', 'Strategy', 'Ops', 'Maint', 'Issues'];
+const GROUPS = ['Executive', 'การขาย', 'การเงิน', 'โครงการ', 'กลยุทธ์', 'ปฏิบัติการ', 'สถานะข้อมูล'];
 
 srv.listen(8099, async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } }); const errs = [];
@@ -22,7 +22,7 @@ srv.listen(8099, async () => {
   const leaks = [];
   for (const f of files) {
     const t = fs.readFileSync(path.join(site, f), 'utf8');
-    if (f === 'data.enc.js') { if (/ลิ้มบางปะหัน|AR00C|สตาร์ ?แก๊ส/.test(t)) leaks.push(f + ': พบข้อความไทยที่อ่านได้ในไฟล์เข้ารหัส'); continue; }
+    if (f === 'data.enc.js') { if (/ลิ้มบางปะหัน|AR00C|สตาร์ ?แก๊ส|ผู้แจ้งซ่อม/.test(t)) leaks.push(f + ': พบข้อความไทยที่อ่านได้ในไฟล์เข้ารหัส'); continue; }
     if (/ลิ้มบางปะหัน|AR00C-|IV26\d{8}|78\.83 ล้าน/.test(t)) leaks.push(f + ': พบข้อมูลจริง');
     if (/(client_secret|BEGIN [A-Z ]*PRIVATE KEY|passkey\s*[:=]\s*['"][^'"]{8,})/i.test(t)) leaks.push(f + ': พบความลับ');
   }
@@ -54,7 +54,7 @@ srv.listen(8099, async () => {
       lineKeyUnique: ids.size === M.lines.length, lines: M.lines.length,
       stations: new Set(U.map(u => u.company + '|' + u.station_id)).size, units: U.length,
       prodKeyHasCo: M.products.every(x => !!x.co), lpgFactor: (bundle.ds.lpg && bundle.ds.lpg.rows[0] || {}).factor }; }, key);
-  ok(info.pages.length === 10, 'bundle มีครบ 10 หน้า', info.pages.length + ' หน้า');
+  ok(info.pages.length === 11, 'bundle มีครบ 11 หน้า', info.pages.length + ' หน้า');
   ok(info.lineKeyUnique, 'key ข้ามบริษัทไม่ชน: บริษัท+item_id ไม่ซ้ำทั้ง ' + info.lines + ' บรรทัด');
   ok(info.stations < info.units, 'สถานีหลายธุรกิจไม่ถูกนับเป็นสถานีใหม่', info.stations + ' สถานี · ' + info.units + ' หน่วยธุรกิจ');
   ok(info.prodKeyHasCo, 'รหัสสินค้ามี company code ร่วมใน key เสมอ');
@@ -77,6 +77,10 @@ srv.listen(8099, async () => {
   const strat = await p.evaluate(() => document.getElementById('dc-root').innerText);
   ok(/Customer Lifetime Value \(CLV\)[\s\S]{0,40}ไม่คำนวณ/.test(strat), 'หน้ากลยุทธ์ระบุว่าไม่คำนวณ CLV พร้อมเหตุผล');
   ok(/เทียบเท่าลิตร/.test(strat), 'หน้ากลยุทธ์แสดงปริมาณ LPG เทียบเท่าลิตรพร้อม factor ที่ใช้');
+  await p.evaluate(() => { location.hash = '#/Maint'; }); await p.waitForTimeout(900);
+  const mt = await p.evaluate(() => document.getElementById('dc-root').innerText);
+  ok(/ใบงานค้างอยู่/.test(mt) && /เกิน SLA/.test(mt), 'หน้าซ่อมบำรุงแสดงใบงานค้างและงานเกิน SLA จากระบบ Factorium');
+  ok(/ไม่คำนวณ Resource Utilization/.test(mt), 'หน้าซ่อมบำรุงระบุว่าไม่คำนวณ Resource Utilization จากจำนวนใบงาน');
 
   // 7) ตัวกรองใช้ร่วมกันทุกหน้า
   await p.evaluate(() => { location.hash = '#/Products'; }); await p.waitForTimeout(800);
