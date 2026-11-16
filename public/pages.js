@@ -677,16 +677,77 @@ window.STAR_PAGES = (function () {
     if (SS.opsStatus === 'ok' && !(r[8] >= 1)) return false;
     return true;
   };
+  /* หน้า Operation: ช่วงวันที่ในเดือนที่ไฟล์ Operation ครอบคลุม
+     คิดยอดใหม่จาก daily รายวันของแต่ละสาขา และเฉลี่ยเป้าเดือนตามจำนวนวันที่เลือก (วิธีเดียวกับคอลัมน์ "คาดว่าถึงวันนี้" เดิม)
+     MoM/YoY เป็นฐานทั้งเดือน จึงตัดออกเมื่อเลือกช่วงบางส่วน ไม่ใช่แสดงเป็น 0% */
+  function opsMonth() {
+    var o = S.data.ops || {}, asof = o.asof || null;
+    if (!asof) return null;
+    var y = +asof.slice(0, 4), m = +asof.slice(5, 7) - 1;
+    var first = S.dayOf(asof.slice(0, 8) + '01'), dim = o.dim || new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    var last = 1; (o.branches || []).forEach(function (b) { last = Math.max(last, (b.daily || []).length); });
+    return { first: first, dim: dim, last: last, lastDay: first + last - 1, label: S.TH_M[m] + ' ' + (y + 543) };
+  }
+  function opsRange() {
+    var M = opsMonth(); if (!M) return null;
+    var SS = S.S, a = SS.opsFrom, b = SS.opsTo;
+    if (typeof a !== 'number' || a < M.first || a > M.lastDay) a = M.first;
+    if (typeof b !== 'number' || b < a || b > M.lastDay) b = M.lastDay;
+    return { M: M, a: a, b: b, d1: a - M.first + 1, d2: b - M.first + 1, full: a === M.first && b === M.lastDay };
+  }
+  window.STAR_OPS_DAYS = function (D) {
+    var R = opsRange();
+    window.STAR_OPS_PARTIAL = !!(R && !R.full);
+    window.STAR_OPS_DROPPED = 0;
+    if (!R || R.full) return D;
+    var n = R.d2 - R.d1 + 1, dim = R.M.dim, dropped = 0;
+    var rows = D.rows.filter(function (r) {
+      /* สาขาที่ไม่มียอดรายวัน (ยอดสะสมจาก Excel) แยกยอดตามช่วงวันไม่ได้ จึงไม่นำมารวมในช่วงบางส่วน
+         แทนที่จะเดาว่ายอดกระจายเท่ากันทุกวัน — จำนวนที่ตัดออกแจ้งไว้ใต้ตัวกรอง */
+      if ((r[16] || []).length) return true;
+      dropped++; return false;
+    }).map(function (r) {
+      var q = r.slice(), daily = r[16], sum = 0, i;
+      for (i = R.d1 - 1; i <= R.d2 - 1 && i < daily.length; i++) sum += daily[i] || 0;
+      var exp = r[5] * n / dim;                       // เป้าเดือน × จำนวนวันที่เลือก ÷ จำนวนวันในเดือน (วิธีเดียวกับคอลัมน์ "คาดว่าถึงวันนี้" เดิม)
+      q[6] = sum; q[7] = n; q[8] = exp ? sum / exp : 0;
+      q[9] = n ? sum / n * dim : 0; q[10] = n ? sum / n : 0;
+      q[11] = Math.max(0, (r[5] - sum) / Math.max(1, dim - R.d2));
+      q[16] = daily.slice(R.d1 - 1, R.d2);
+      q[12] = null; q[13] = null;                     // MoM/YoY ใช้ฐานทั้งเดือน — ไม่เทียบกับช่วงบางส่วน
+      return q;
+    });
+    window.STAR_OPS_DROPPED = dropped;
+    return Object.assign({}, D, { rows: rows });
+  };
   var Ops = function (Base) {
     return class extends Base {
       __filters() {
-        var SS = S.S;
-        return { rows: [[
+        var SS = S.S, M = opsMonth();
+        var dayField = function (key, label) {
+          return { type: 'date', label: label, min: M.first, max: M.lastDay,
+            get: function () { var r = opsRange(); return r ? (key === 'opsFrom' ? r.a : r.b) : M.first; },
+            set: function (v) {
+              v = Math.max(M.first, Math.min(M.lastDay, v)); SS[key] = v;
+              if (key === 'opsFrom' && SS.opsTo < v) SS.opsTo = v;
+              if (key === 'opsTo' && SS.opsFrom > v) SS.opsFrom = v;
+            } };
+        };
+        return { rows: [(M ? [dayField('opsFrom', 'ตั้งแต่'), dayField('opsTo', 'ถึง')] : []).concat([
           { label: 'บริษัท', options: function () { return [['', 'ทุกบริษัท'], ['STG', 'STG'], ['STP', 'STP'], ['TWP', 'TWP']]; }, get: function () { return SS.opsCo; }, set: function (v) { SS.opsCo = v; } },
           { label: 'ธุรกิจ', options: function () { return [['', 'ทุกธุรกิจ'], ['LPG', 'LPG'], ['น้ำมัน', 'น้ำมัน'], ['NGV', 'NGV'], ['Café Amazon', 'Café Amazon'], ['7-Eleven', '7-Eleven']]; }, get: function () { return SS.opsKind; }, set: function (v) { SS.opsKind = v; } },
-          { label: 'สถานะเทียบเป้า', options: function () { return [['', 'ทุกสถานะ'], ['risk', 'ต่ำกว่า 90% ของเป้า'], ['watch', '90–99% ของเป้า'], ['ok', 'ถึงเป้าแล้ว (≥100%)']]; }, get: function () { return SS.opsStatus; }, set: function (v) { SS.opsStatus = v; } }]],
-          reset: function () { SS.opsCo = SS.opsKind = SS.opsStatus = ''; },
-          note: function () { return 'ใช้ร่วมกับปุ่มเลือกผู้จัดการเขตด้านล่าง · เป้าและ AM จากไฟล์ Operation · ยอด MTD จาก TRCloud ถึง 12 พ.ย. (บางสาขาใช้ตัวเลข Excel 8 พ.ย.) · ถ้าไม่พบสาขาตามตัวกรอง จะแสดงทุกสาขาของผู้จัดการเขตนั้น'; } };
+          { label: 'สถานะเทียบเป้า', options: function () { return [['', 'ทุกสถานะ'], ['risk', 'ต่ำกว่า 90% ของเป้า'], ['watch', '90–99% ของเป้า'], ['ok', 'ถึงเป้าแล้ว (≥100%)']]; }, get: function () { return SS.opsStatus; }, set: function (v) { SS.opsStatus = v; } }])],
+          reset: function () { SS.opsCo = SS.opsKind = SS.opsStatus = ''; if (M) { SS.opsFrom = M.first; SS.opsTo = M.lastDay; } },
+          note: function () {
+            var r = opsRange(), base = 'ใช้ร่วมกับปุ่มเลือกผู้จัดการเขตด้านล่าง · เป้าและ AM จากไฟล์ Operation · ยอด MTD จาก TRCloud ถึง 12 พ.ย. (บางสาขาใช้ตัวเลข Excel 8 พ.ย.) · ถ้าไม่พบสาขาตามตัวกรอง จะแสดงทุกสาขาของผู้จัดการเขตนั้น';
+            if (!r) return base;
+            var span = 'ช่วงวันที่เลือกได้เฉพาะใน ' + r.M.label + ' (' + S.thDate(r.M.first) + ' – ' + S.thDate(r.M.lastDay) + ') เท่าที่ไฟล์ Operation มียอดรายวัน';
+            if (r.full) return span + ' · ' + base;
+            var drop = window.STAR_OPS_DROPPED || 0;
+            return span + ' · เลือก ' + (r.d2 - r.d1 + 1) + ' วัน: ยอดคิดใหม่จากยอดรายวัน และเป้าเดือนเฉลี่ยตามจำนวนวันที่เลือก'
+              + (drop ? ' · ไม่รวม ' + drop + ' สาขาที่มีแต่ยอดสะสมจาก Excel (แยกตามวันไม่ได้)' : '')
+              + ' · MoM/YoY และการ์ดข้อสังเกต/คำแนะนำใช้ฐานทั้งเดือน จึงไม่เปลี่ยนตามช่วงวัน · ' + base;
+          } };
       }
     };
   };
@@ -909,28 +970,59 @@ window.STAR_PAGES = (function () {
   /* ================= ปฏิบัติการ › ซ่อมบำรุงสถานี (Factorium) =================
      ข้อมูลจากไฟล์ส่งออกของระบบซ่อมบำรุง ไม่ใช่เอกสารบัญชี · ช่วงวันที่ของไฟล์ต่างจากข้อมูลขาย
      จึงมีตัวเลือกช่วงเวลาของตัวเอง แต่ใช้ตัวกรองบริษัท/สาขาร่วมกับหน้าอื่น */
+  /* ช่วงวันที่ของหน้าซ่อมบำรุง: ช่วงสำเร็จรูป (30/90/365/ทั้งหมด) หรือกำหนดเอง — ทั้งสองแบบคิดเป็นช่วงวันเดียวกัน
+     ขอบเขตมาจากช่วงวันที่ในไฟล์ Factorium เท่านั้น ไม่ขยายเกินข้อมูลที่มี */
+  function maintWin() {
+    var D = S.data.maint || {}, SS = S.S;
+    var lo = D.from ? S.dayOf(D.from) : 0, hi = D.to ? S.dayOf(D.to) : lo;
+    var a = lo, b = hi;
+    if (SS.mtPeriod === 'custom') {
+      a = typeof SS.mtFrom === 'number' ? SS.mtFrom : lo;
+      b = typeof SS.mtTo === 'number' ? SS.mtTo : hi;
+    } else if (SS.mtPeriod) a = Math.max(lo, hi - (+SS.mtPeriod) + 1);
+    a = Math.max(lo, Math.min(hi, a)); b = Math.max(a, Math.min(hi, b));
+    return { lo: lo, hi: hi, a: a, b: b, custom: SS.mtPeriod === 'custom' };
+  }
   var Maint = function (Base) {
     return class extends Base {
       __filters() {
         var SS = S.S, D = S.data.maint || { rows: [] };
         var kinds = Array.from(new Set(D.rows.map(function (r) { return r.kind; }).filter(Boolean))).sort();
+        var W = maintWin();
+        /* ตั้งแต่/ถึง = วันที่แจ้งซ่อม · เลือกได้เฉพาะในช่วงที่ไฟล์ Factorium ครอบคลุม · แก้วันเองแล้วช่วงสำเร็จรูปจะเปลี่ยนเป็น "กำหนดเอง" */
+        var dayField = function (key, label) {
+          return { type: 'date', label: label, min: W.lo, max: W.hi,
+            get: function () { var w = maintWin(); return key === 'mtFrom' ? w.a : w.b; },
+            set: function (v) {
+              v = Math.max(W.lo, Math.min(W.hi, v));
+              var w = maintWin(); SS.mtPeriod = 'custom'; SS.mtFrom = w.a; SS.mtTo = w.b; SS[key] = v;
+              if (key === 'mtFrom' && SS.mtTo < v) SS.mtTo = v;
+              if (key === 'mtTo' && SS.mtFrom > v) SS.mtFrom = v;
+            } };
+        };
         return { rows: [[
-          { label: 'ช่วงเวลา (วันที่แจ้งซ่อม)', flex: '1 1 220px', options: function () { return [['30', '30 วันล่าสุด'], ['90', '90 วันล่าสุด'], ['365', '12 เดือนล่าสุด'], ['', 'ทั้งหมดในไฟล์']]; },
-            get: function () { return SS.mtPeriod; }, set: function (v) { SS.mtPeriod = v; } },
+          { label: 'ช่วงเวลา (วันที่แจ้งซ่อม)', flex: '1 1 220px', options: function () { return [['30', '30 วันล่าสุด'], ['90', '90 วันล่าสุด'], ['365', '12 เดือนล่าสุด'], ['', 'ทั้งหมดในไฟล์'], ['custom', 'กำหนดเอง']]; },
+            get: function () { return SS.mtPeriod; }, set: function (v) { SS.mtPeriod = v; if (v === 'custom') { var w = maintWin(); SS.mtFrom = w.a; SS.mtTo = w.b; } } },
+          dayField('mtFrom', 'ตั้งแต่'), dayField('mtTo', 'ถึง'),
           S.F.cos(), S.F.station(),
           { label: 'สถานะใบงาน', options: function () { return [['', 'ทุกสถานะ'], ['open', 'ยังไม่ปิด'], ['overdue', 'ค้างเกิน SLA'], ['closed', 'ปิดงานแล้ว'], ['rejected', 'ถูกปฏิเสธ']]; },
             get: function () { return SS.mtStatus; }, set: function (v) { SS.mtStatus = v; } },
           { label: 'ประเภทงาน', flex: '1 1 220px', options: function () { return [['', 'ทุกประเภท']].concat(kinds.map(function (k) { return [k, k]; })); },
             get: function () { return SS.mtKind; }, set: function (v) { SS.mtKind = v; } }]],
-          reset: function () { SS.mtPeriod = '90'; SS.mtStatus = ''; SS.mtKind = ''; SS.station = ''; var d = S.defaults(); SS.cos = d.cos; },
-          note: function () { return 'ใบงานจากระบบ Factorium · ไฟล์ล่าสุดนำเข้าเมื่อ ' + ((S.data.maint || {}).imported_at || '–').slice(0, 16).replace('T', ' ')
-            + ' · ตัวกรองบริษัทและสาขาใช้ร่วมกับหน้าอื่น ส่วนช่วงเวลาใช้ของหน้านี้เพราะไฟล์ซ่อมบำรุงมีช่วงวันที่ต่างจากข้อมูลขาย'; } };
+          reset: function () { SS.mtPeriod = '90'; SS.mtFrom = SS.mtTo = null; SS.mtStatus = ''; SS.mtKind = ''; SS.station = ''; var d = S.defaults(); SS.cos = d.cos; },
+          note: function () {
+            var w = maintWin();
+            return 'ใบงานจากระบบ Factorium · ไฟล์ล่าสุดนำเข้าเมื่อ ' + ((S.data.maint || {}).imported_at || '–').slice(0, 16).replace('T', ' ')
+              + ' · ช่วงที่คิด: ' + S.thDate(w.a) + ' – ' + S.thDate(w.b) + ' (ไฟล์มีข้อมูล ' + S.thDate(w.lo) + ' – ' + S.thDate(w.hi) + ')'
+              + ' · ตัวกรองบริษัทและสาขาใช้ร่วมกับหน้าอื่น ส่วนช่วงวันใช้ของหน้านี้เพราะไฟล์ซ่อมบำรุงมีช่วงวันที่ต่างจากข้อมูลขาย'
+              + ' · ใบงานค้างและค้างเกิน SLA นับ ณ ' + S.thDate(w.hi) + ' ทุกใบที่ยังไม่ปิด ไม่จำกัดตามช่วงวันที่เลือก'; } };
       }
       renderVals() {
         var th = this.__theme(), p = th.p, SS = S.S, D = S.data.maint;
         if (!D || !D.rows.length) return Object.assign(th, { pt: stamp(), mt: { range: 'ยังไม่มีไฟล์ใบงานซ่อมบำรุง', kpis: [], stations: [], breaks: [], open: [], bySub: '', openSub: '', caveat: 'รัน python3 scripts/import_maintenance.py raw/<ไฟล์ Factorium>.xlsx', csvStation: function () {}, csvOpen: function () {} } });
         var day = function (iso) { return iso ? Math.round((Date.parse(iso.slice(0, 10) + 'T00:00:00Z') - Date.parse(D.to + 'T00:00:00Z')) / 864e5) : null; };
-        var asof = D.to, cut = SS.mtPeriod ? -(+SS.mtPeriod) : -1e9;
+        var asof = D.to, W = maintWin();
+        var inWin = function (iso) { var d = iso ? S.dayOf(iso.slice(0, 10)) : null; return d != null && d >= W.a && d <= W.b; };
         var age = function (r) { return r.reported ? -day(r.reported) : null; };
         var overdue = function (r) { return !r.closed && !r.rejected && r.sla != null && age(r) > r.sla; };
         var stName = function (id) { var u = S.U.filter(function (u) { return u.station_id === id; })[0]; return u ? u.station_name : (id || 'ไม่ระบุ'); };
@@ -939,16 +1031,17 @@ window.STAR_PAGES = (function () {
         var inKind = function (r) { return !SS.mtKind || r.kind === SS.mtKind; };
         var inStatus = function (r) { return !SS.mtStatus || (SS.mtStatus === 'open' ? !r.closed && !r.rejected : SS.mtStatus === 'closed' ? r.closed : SS.mtStatus === 'rejected' ? r.rejected : overdue(r)); };
         var base = D.rows.filter(function (r) { return inCo(r) && inSt(r) && inKind(r) && inStatus(r); });
-        var inPeriod = function (r) { return r.reported && day(r.reported) >= cut; };
-        var rep = base.filter(inPeriod);                                   // แจ้งในช่วง
-        var closedIn = base.filter(function (r) { return r.done && day(r.done) >= cut; });
+        var inPeriod = function (r) { return inWin(r.reported); };
+        var rep = base.filter(inPeriod);                                   // แจ้งในช่วงวันที่เลือก
+        var closedIn = base.filter(function (r) { return inWin(r.done); });
         var open = base.filter(function (r) { return !r.closed && !r.rejected; });
         var over = open.filter(overdue);
         var safety = open.filter(function (r) { return /^เกี่ยวข้องกับความปลอดภัย/.test(r.safety); });
         var stopUsed = new Set(D.rows.map(function (r) { return r.stopped; })).size > 1;   // ช่อง "เครื่องจักรหยุด" ถูกใช้จริงหรือไม่
         var mins = closedIn.map(function (r) { return r.min_close; }).filter(function (v) { return v != null && v > 0; });
         var avgDays = mins.length ? mins.reduce(function (a, b) { return a + b; }, 0) / mins.length / 1440 : null;
-        var perLabel = SS.mtPeriod ? SS.mtPeriod + ' วันล่าสุด' : 'ทั้งหมดในไฟล์';
+        var perLabel = W.custom ? S.thDate(W.a) + ' – ' + S.thDate(W.b)
+          : (SS.mtPeriod ? SS.mtPeriod + ' วันล่าสุด' : 'ทั้งหมดในไฟล์');
 
         var kpis = [
           { label: 'ใบงานค้างอยู่', value: S.fmt(Math.round(open.length * p), 0), unit: 'ใบงาน', color: open.length ? '#F5B82E' : '#6DC24D',
@@ -969,7 +1062,7 @@ window.STAR_PAGES = (function () {
           var k = (r.co || '?') + '|' + (r.station || '?');
           var x = byStation[k] = byStation[k] || { co: r.co || '–', name: stName(r.station) + (r.station ? '' : ' (' + r.dept + ')'), rep: 0, closed: 0, open: 0, over: 0, oldest: 0 };
           if (inPeriod(r)) x.rep++;
-          if (r.done && day(r.done) >= cut) x.closed++;
+          if (inWin(r.done)) x.closed++;
           if (!r.closed && !r.rejected) { x.open++; if (overdue(r)) x.over++; x.oldest = Math.max(x.oldest, age(r) || 0); }
         });
         var stations = Object.keys(byStation).map(function (k) { return byStation[k]; })

@@ -82,6 +82,32 @@ srv.listen(8099, async () => {
   ok(/ใบงานค้างอยู่/.test(mt) && /เกิน SLA/.test(mt), 'หน้าซ่อมบำรุงแสดงใบงานค้างและงานเกิน SLA จากระบบ Factorium');
   ok(/ไม่คำนวณ Resource Utilization/.test(mt), 'หน้าซ่อมบำรุงระบุว่าไม่คำนวณ Resource Utilization จากจำนวนใบงาน');
 
+  // 6.5) ตัวกรองช่วงวันที่ของหน้าปฏิบัติการ: คิดยอดใหม่จากยอดรายวันจริง ไม่ใช่เฉลี่ยเอง
+  await p.evaluate(() => { location.hash = '#/Ops'; }); await p.waitForTimeout(900);
+  const opsDay = await p.evaluate(async () => {
+    const d = [...document.querySelectorAll('#dc-root input[type=date]')];
+    if (d.length !== 2) return { err: 'ไม่พบช่อง ตั้งแต่/ถึง บนหน้า Operation' };
+    const lim = { min: d[0].min, max: d[0].max };
+    const rows = window.STAR.data.ops.branches.filter(b => (b.daily || []).length);
+    const b0 = rows[0], expect = b0.daily.slice(0, 3).reduce((a, c) => a + c, 0);
+    const S = window.STAR; S.S.opsFrom = S.dayOf(lim.min); S.S.opsTo = S.dayOf(lim.min) + 2;
+    const out = window.STAR_OPS_DAYS({ rows: [['x', b0.name, b0.co, b0.kind, b0.unit, b0.target, b0.mtd, b0.days,
+      0, 0, 0, 0, 0.1, 0.2, 'TRCloud', false, b0.daily, b0.tAmt, 0, b0.tgtDay]] }).rows[0];
+    return { lim, got: out[6], expect, days: out[7], mom: out[12], yoy: out[13], partial: window.STAR_OPS_PARTIAL };
+  });
+  ok(!opsDay.err && opsDay.got === opsDay.expect && opsDay.days === 3 && opsDay.mom === null && opsDay.yoy === null && opsDay.partial === true,
+    'หน้าปฏิบัติการกรองช่วงวันได้ และคิดยอดจากยอดรายวันจริง (MoM/YoY ตัดออกเมื่อเลือกบางช่วง)', opsDay.err || JSON.stringify(opsDay));
+
+  // 6.6) ตัวกรองช่วงวันที่ของหน้าซ่อมบำรุง: ขอบเขตตรงกับช่วงวันในไฟล์ Factorium
+  await p.evaluate(() => { location.hash = '#/Maint'; }); await p.waitForTimeout(900);
+  const mtDay = await p.evaluate(() => {
+    const d = [...document.querySelectorAll('#dc-root input[type=date]')], D = window.STAR.data.maint;
+    if (d.length !== 2) return { err: 'ไม่พบช่อง ตั้งแต่/ถึง บนหน้าซ่อมบำรุง' };
+    return { min: d[0].min, max: d[1].max, from: D.from, to: D.to };
+  });
+  ok(!mtDay.err && mtDay.min === mtDay.from && mtDay.max === mtDay.to,
+    'หน้าซ่อมบำรุงกรองช่วงวันได้ ภายในช่วงวันที่ไฟล์ Factorium ครอบคลุม', mtDay.err || JSON.stringify(mtDay));
+
   // 7) ตัวกรองใช้ร่วมกันทุกหน้า
   await p.evaluate(() => { location.hash = '#/Products'; }); await p.waitForTimeout(800);
   const filt = await p.evaluate(async () => {

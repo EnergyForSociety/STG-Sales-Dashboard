@@ -55,7 +55,7 @@ window.STAR = (function () {
   var S = null;
   function defaults() {
     return { preset: 'lastmonth', from: 0, to: 0, cos: ['STG', 'STP', 'TWP'], channel: '', station: '', biz: '', group: '', product: '',
-      wsStatus: '', wsSearch: '', plMonth: '', plCo: '', plKind: '', cashCo: '', cashSide: '', cashBucket: '', cashType: '', cashSearch: '', cashKind: '', opsCo: '', opsKind: '', opsStatus: '', mtPeriod: '90', mtStatus: '', mtKind: '' };
+      wsStatus: '', wsSearch: '', plMonth: '', plCo: '', plKind: '', cashCo: '', cashSide: '', cashBucket: '', cashType: '', cashSearch: '', cashKind: '', opsCo: '', opsKind: '', opsStatus: '', opsFrom: null, opsTo: null, mtPeriod: '90', mtStatus: '', mtKind: '', mtFrom: null, mtTo: null };
   }
   function save() { try { sessionStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
   function load() { try { var s = JSON.parse(sessionStorage.getItem(KEY) || 'null'); return s && typeof s === 'object' ? Object.assign(defaults(), s) : null; } catch (e) { return null; } }
@@ -267,8 +267,9 @@ window.STAR = (function () {
     return h('label', { style: CSS.lab + '; flex: ' + (f.flex || '1 1 160px') }, [document.createTextNode(f.label), s]);
   }
   function dateField(f) {
-    var i = h('input', { type: 'date', style: CSS.ctl + "; font-family: 'Outfit', sans-serif", min: iso(0), max: iso(MAXDAY), value: iso(f.get()),
-      onchange: function () { if (!i.value) return; f.set(Math.max(0, Math.min(MAXDAY, dayOf(i.value)))); fire(); } });
+    var lo = f.min == null ? 0 : f.min, hi = f.max == null ? MAXDAY : f.max;
+    var i = h('input', { type: 'date', style: CSS.ctl + "; font-family: 'Outfit', sans-serif", min: iso(lo), max: iso(hi), value: iso(f.get()),
+      onchange: function () { if (!i.value) return; f.set(Math.max(lo, Math.min(hi, dayOf(i.value)))); fire(); } });
     return h('label', { style: CSS.lab + '; flex: 0 1 165px' }, [document.createTextNode(f.label), i]);
   }
   function chipsField(f) {
