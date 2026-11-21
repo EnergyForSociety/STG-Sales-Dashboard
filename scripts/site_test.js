@@ -135,7 +135,7 @@ srv.listen(8099, async () => {
 
   // 8) ธีมสามโหมด
   for (const t of ['auto', 'light', 'dark']) {
-    const r = await p.evaluate(async (th) => { const names = { auto: 'อัตโนมัติ', light: 'สว่าง', dark: 'มืด' };
+    const r = await p.evaluate(async (th) => { const names = { auto: 'ปกติ', light: 'สว่าง', dark: 'มืด' };
       const btn = [...document.querySelectorAll('#dc-root button')].find(b => b.textContent.trim() === names[th]);
       if (!btn) return { err: 'ไม่พบปุ่มธีม ' + names[th] }; btn.click(); await new Promise(r => setTimeout(r, 400));
       return { pref: localStorage.getItem('star-theme'), cls: document.querySelector('#dc-root > div').className }; }, t);

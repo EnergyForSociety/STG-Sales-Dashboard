@@ -25,5 +25,16 @@ body{background:#F7F3EF;color:var(--ink);font-family:'IBM Plex Sans Thai','Outfi
 .btn:focus-visible{outline:3px solid var(--sand);outline-offset:2px}
 /* แถบผู้ใช้เดิมของ gate ซ่อนไว้ — ชื่อผู้ใช้และปุ่มออกจากระบบแสดงที่ส่วนหัวของแต่ละหน้าแทน */
 .hdr-user{display:none}
+/* ปุ่มสลับธีม (ปกติ / มืด / สว่าง) — hover/focus ที่ inline style ทำไม่ได้ */
+.theme-seg button[aria-pressed="false"]:hover{background:rgba(255,255,255,.08)!important;color:#fff!important}
+.theme-seg button:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+.theme-seg button:active{transform:scale(.98)}
+/* เมนูหมวดแบบกรอบแบ่งช่อง */
+.nav-seg a{transition:background .2s ease,color .2s ease,box-shadow .2s ease}
+.nav-seg a:not([aria-current]):hover{background:var(--card)!important;color:var(--ink)!important}
+.nav-seg a:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+.th-dark .nav-seg a[aria-current]{background:#3E2B31!important;box-shadow:0 0 0 1px #57414A,0 1px 3px rgba(0,0,0,.4)!important}
+.th-dark .nav-seg a:not([aria-current]):hover{background:#33232A!important}
+@media (max-width:560px){.theme-seg .seg-tx{display:none}.theme-seg button{padding:0 12px!important}}
 .dc-err{max-width:720px;margin:80px auto;padding:24px;background:#fff;border:1px solid #EFE6DE;border-left:4px solid #B42318;border-radius:4px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
