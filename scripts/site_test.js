@@ -23,7 +23,7 @@ srv.listen(8099, async () => {
   for (const f of files) {
     const t = fs.readFileSync(path.join(site, f), 'utf8');
     if (f === 'data.enc.js') { if (/ลิ้มบางปะหัน|AR00C|สตาร์ ?แก๊ส|ผู้แจ้งซ่อม/.test(t)) leaks.push(f + ': พบข้อความไทยที่อ่านได้ในไฟล์เข้ารหัส'); continue; }
-    if (/ลิ้มบางปะหัน|AR00C-|IV26\d{8}|78\.83 ล้าน/.test(t)) leaks.push(f + ': พบข้อมูลจริง');
+    if (/ลิ้มบางปะหัน|AR00C-|IV26\d{8}|78\.83 ล้าน|PO26\d{8}|app\.clickup\.com\/t\/[a-z0-9]{6,}|ปรับปรุงสาขาบางบาล/.test(t)) leaks.push(f + ': พบข้อมูลจริง');
     if (/(client_secret|BEGIN [A-Z ]*PRIVATE KEY|passkey\s*[:=]\s*['"][^'"]{8,})/i.test(t)) leaks.push(f + ': พบความลับ');
   }
   ok(leaks.length === 0, 'ไฟล์ที่ขึ้น GitHub Pages ไม่มีข้อมูลจริงหรือความลับแบบอ่านได้', leaks.join(' · '));
@@ -72,7 +72,17 @@ srv.listen(8099, async () => {
   // 6) หน้าที่ยังไม่มีข้อมูลต้องบอกตรง ๆ ไม่แสดงศูนย์
   await p.evaluate(() => { location.hash = '#/Project'; }); await p.waitForTimeout(700);
   const proj = await p.evaluate(() => document.getElementById('dc-root').innerText);
-  ok(/ยังไม่มีแหล่งข้อมูลโครงการ/.test(proj) && /ไม่คำนวณ Resource Utilization/.test(proj), 'หน้าโครงการแจ้งว่ายังไม่มีแหล่งข้อมูล และไม่คำนวณ Resource Utilization แทน');
+  ok(/ClickUp ดึง/.test(proj) && /TRCloud \(เอกสารจัดซื้อ\) STG/.test(proj) && /TWP \d/.test(proj), 'หน้าโครงการแสดงวันที่ดึง ClickUp และวันที่ข้อมูล TRCloud แยกตามบริษัท');
+  ok(/โครงการยืนยันแล้ว[\s\S]{0,40}โครงการ/.test(proj) && /งานเกินกำหนด[\s\S]{0,40}งาน/.test(proj), 'KPI หน้าโครงการระบุหน่วย "โครงการ" / "งาน"');
+  ok(!/POS PT|API SYSTEM|Star Schema/.test(proj) && /POS SYSTEM\s*56 งาน/.test(proj), 'งาน IT (POS SYSTEM, Questionnaire, EDC) ถูกตัดออกและแสดงเหตุผลในส่วนความครอบคลุม');
+  await p.click('section[aria-label="ทะเบียนโครงการ"] tbody tr'); await p.waitForTimeout(400);
+  const pjd = await p.evaluate(() => (document.querySelector('section[aria-label="รายละเอียดโครงการ"]') || {}).innerText || '');
+  ok(/Resource Utilization\s*ข้อมูลไม่พอ/.test(pjd) && /ยอดบันทึกบัญชี AP/.test(pjd), 'รายละเอียดโครงการแยกฐานเงิน และ Resource Utilization = ข้อมูลไม่พอ');
+  const pjPick = async (i, v) => { const el = (await p.$$('#dc-root select'))[i]; await el.selectOption(v); await p.waitForTimeout(400); };
+  await pjPick(2, ''); await pjPick(0, 'STP');
+  const stpRows = await p.evaluate(() => [...document.querySelectorAll('section[aria-label="ทะเบียนโครงการ"] tbody tr')].map(r => r.cells[1].innerText.split('\n')[0]));
+  ok(stpRows.length > 0 && stpRows.every(c => /STP/.test(c)), 'ตัวกรองบริษัท STP แสดงเฉพาะรายการของ STP', stpRows.join(','));
+  await pjPick(0, ''); await pjPick(2, 'โครงการ');
   await p.evaluate(() => { location.hash = '#/Strategy'; }); await p.waitForTimeout(700);
   const strat = await p.evaluate(() => document.getElementById('dc-root').innerText);
   ok(/Customer Lifetime Value \(CLV\)[\s\S]{0,40}ไม่คำนวณ/.test(strat), 'หน้ากลยุทธ์ระบุว่าไม่คำนวณ CLV พร้อมเหตุผล');

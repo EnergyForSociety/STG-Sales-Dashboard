@@ -39,8 +39,9 @@ fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, 'pages.json'), JSON.stringify({ order, titles, pages }));
 // ข้อมูลประกอบที่หน้าเว็บใช้คำนวณตามตัวกรอง: model.json (scripts/build_model.py) + ไฟล์จาก design/data
 // wc.json มาจาก scripts/build_wc.py (ลูกหนี้/เจ้าหนี้รายเอกสาร) · ที่เหลือมาจาก design/data
-const extra = { station_pl: 'station_pl.json', wc: null, stock: null, lpg: null, maint: null, ops: 'ops_model.json', yoy: 'yoy.json' };
+const extra = { station_pl: 'station_pl.json', wc: null, stock: null, lpg: null, maint: null, ops: 'ops_model.json', yoy: 'yoy.json', projects: null };
 for (const [k, f] of Object.entries(extra)) if (f) fs.copyFileSync(path.join(ROOT, 'design', 'data', f), path.join(out, k + '.json'));
+if (!fs.existsSync(path.join(out, 'projects.json'))) { console.error('ไม่พบ data/projects.json — รัน python3 scripts/import_projects.py ก่อน (ดู docs/PROJECT-PAGE.md)'); process.exit(1); }
 if (!fs.existsSync(path.join(out, 'maint.json'))) { console.error('ไม่พบ data/maint.json — รัน python3 scripts/import_maintenance.py raw/<ไฟล์ Factorium>.xlsx ก่อน'); process.exit(1); }
 if (!fs.existsSync(path.join(out, 'lpg.json'))) { console.error('ไม่พบ data/lpg.json — รัน python3 scripts/build_lpg.py ก่อน'); process.exit(1); }
 if (!fs.existsSync(path.join(out, 'stock.json'))) { console.error('ไม่พบ data/stock.json — รัน python3 scripts/build_stock.py ก่อน'); process.exit(1); }

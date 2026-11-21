@@ -55,7 +55,8 @@ window.STAR = (function () {
   var S = null;
   function defaults() {
     return { preset: 'lastmonth', from: 0, to: 0, cos: ['STG', 'STP', 'TWP'], channel: '', station: '', biz: '', group: '', product: '',
-      wsStatus: '', wsSearch: '', plMonth: '', plCo: '', plKind: '', cashCo: '', cashSide: '', cashBucket: '', cashType: '', cashSearch: '', cashKind: '', opsCo: '', opsKind: '', opsStatus: '', opsFrom: null, opsTo: null, mtPeriod: '90', mtStatus: '', mtKind: '', mtFrom: null, mtTo: null };
+      wsStatus: '', wsSearch: '', plMonth: '', plCo: '', plKind: '', cashCo: '', cashSide: '', cashBucket: '', cashType: '', cashSearch: '', cashKind: '', opsCo: '', opsKind: '', opsStatus: '', opsFrom: null, opsTo: null, mtPeriod: '90', mtStatus: '', mtKind: '', mtFrom: null, mtTo: null,
+      pjCo: '', pjStation: '', pjKind: 'โครงการ', pjStatus: '', pjReg: '' };
   }
   function save() { try { sessionStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
   function load() { try { var s = JSON.parse(sessionStorage.getItem(KEY) || 'null'); return s && typeof s === 'object' ? Object.assign(defaults(), s) : null; } catch (e) { return null; } }

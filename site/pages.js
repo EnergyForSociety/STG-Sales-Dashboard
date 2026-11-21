@@ -872,26 +872,205 @@ window.STAR_PAGES = (function () {
     };
   };
 
-  /* ================= โครงการและการส่งมอบ — ยังไม่มีแหล่งข้อมูล ================= */
+  /* ================= โครงการและการส่งมอบ — ClickUp (สถานะ/แผน) + TRCloud (เอกสารเงิน) ================= */
+  /* ข้อมูล: data/projects.json จาก scripts/import_projects.py · ทะเบียน Project ID: config/project_registry.csv
+     หน่วยนับ: "โครงการ" = รายการประเภทโครงการในทะเบียน · "งาน" = งาน ClickUp · "รายการ" = ทุกประเภทในทะเบียน */
+  var PJ_KINDS = ['โครงการ', 'โอกาสธุรกิจ/สัญญา', 'งานศึกษา', 'งานกฎหมาย', 'แผนงานธุรกิจ', 'งานบริหารองค์กร'];
+  var PJ_CO = { STG: 'STG', STP: 'STP', TWP: 'TWP', JOINT: 'โครงการร่วม', PENDING: 'รอยืนยันบริษัท' };
+  var PJ_ST_ORDER = { 'กำลังดำเนินการ': 0, 'ยังไม่เริ่ม': 1, 'พักไว้': 2, 'เสร็จ': 3, 'ยกเลิก': 4 };
+  var CU_ST = { 'complete': 'เสร็จ', 'in progress': 'กำลังทำ', 'not started': 'ยังไม่เริ่ม', 'on hold': 'พักไว้', 'cancelled': 'ยกเลิก' };
+  function pjDays(a, b) { return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5); }
+  function pjDate(iso) { return iso ? S.thDate(S.dayOf(iso)) : '–'; }
+  function pjInScope(p, SS) {
+    var c = SS.pjCo || '';
+    if (c === 'JOINT' || c === 'PENDING') { if (p.co !== c) return false; }
+    else if (c) { if (!(p.co === c || (p.co === 'JOINT' && p.cos.indexOf(c) >= 0))) return false; }
+    if (SS.pjStation && !p.stations.some(function (s) { return s.id === SS.pjStation; })) return false;
+    if (SS.pjKind && p.kind !== SS.pjKind) return false;
+    if (SS.pjReg && p.reg !== SS.pjReg) return false;
+    if (SS.pjStatus === 'overdue') { if (!p.n_over) return false; }
+    else if (SS.pjStatus && p.status !== SS.pjStatus) return false;
+    return true;
+  }
+  function pjCoLabel(p) { return p.co === 'JOINT' ? 'โครงการร่วม (' + p.cos.join(' + ') + ')' : PJ_CO[p.co] || p.co; }
   var Project = function (Base) {
     return class extends Base {
+      __filters() {
+        var SS = S.S, D = S.data.projects || { projects: [] };
+        if (SS.pjKind === undefined) SS.pjKind = 'โครงการ';
+        var stations = new Map();
+        D.projects.forEach(function (p) { p.stations.forEach(function (s) { stations.set(s.id, (s.co ? s.co + ' · ' : '') + s.name); }); });
+        return { rows: [[
+          { label: 'บริษัท', options: function () { return [['', 'ทั้งกลุ่ม'], ['STG', 'STG'], ['STP', 'STP'], ['TWP', 'TWP'], ['JOINT', 'โครงการร่วม'], ['PENDING', 'รอยืนยันบริษัท']]; },
+            get: function () { return SS.pjCo || ''; }, set: function (v) { SS.pjCo = v; } },
+          { label: 'สาขา', flex: '1 1 220px', options: function () { return [['', 'ทุกสาขา (รวมรายการที่ไม่ระบุสาขา)']].concat(Array.from(stations).sort(function (a, b) { return a[1].localeCompare(b[1]); })); },
+            get: function () { return SS.pjStation || ''; }, set: function (v) { SS.pjStation = v; } },
+          { label: 'ประเภท', options: function () { return [['', 'ทุกประเภท']].concat(PJ_KINDS.map(function (k) { return [k, k]; })); },
+            get: function () { return SS.pjKind === undefined ? 'โครงการ' : SS.pjKind; }, set: function (v) { SS.pjKind = v; } },
+          { label: 'สถานะ', options: function () { return [['', 'ทุกสถานะ'], ['overdue', 'มีงานเกินกำหนด'], ['กำลังดำเนินการ', 'กำลังดำเนินการ'], ['ยังไม่เริ่ม', 'ยังไม่เริ่ม'], ['พักไว้', 'พักไว้'], ['เสร็จ', 'เสร็จ'], ['ยกเลิก', 'ยกเลิก']]; },
+            get: function () { return SS.pjStatus || ''; }, set: function (v) { SS.pjStatus = v; } },
+          { label: 'ทะเบียน', options: function () { return [['', 'ยืนยันแล้ว + รอยืนยัน'], ['confirmed', 'ยืนยันแล้วเท่านั้น'], ['proposed', 'รอยืนยัน (คู่ที่เสนอ)']]; },
+            get: function () { return SS.pjReg || ''; }, set: function (v) { SS.pjReg = v; } }]],
+          reset: function () { SS.pjCo = ''; SS.pjStation = ''; SS.pjKind = 'โครงการ'; SS.pjStatus = ''; SS.pjReg = ''; },
+          note: function () {
+            var m = (S.data.projects || {}).meta || {};
+            return 'วันอ้างอิง ' + pjDate(m.asof) + ' (เวลา Asia/Bangkok) · งานเกินกำหนด = ยังไม่เสร็จ/ไม่ยกเลิก และกำหนดส่งก่อนวันอ้างอิง'
+              + ' · ตัวกรองชุดนี้ใช้กับ KPI ตาราง Insight ยอดเงิน และไฟล์ CSV ของหน้านี้ทั้งหมด · บริษัท "STG" รวมโครงการร่วมที่ STG มีส่วน'; } };
+      }
       renderVals() {
-        var th = this.__theme();
-        var need = [
-          { what: 'รายชื่อโครงการและสถานะ', data: 'ทะเบียนโครงการ: ชื่อ ประเภท (เปิดสถานี/ปรับปรุง/เปลี่ยนอุปกรณ์/ขยาย Non-Oil) บริษัท สาขา เจ้าของงาน วันเริ่ม–กำหนดเสร็จ สถานะ', src: 'ฝ่ายวิศวกรรม/ก่อสร้าง' },
-          { what: 'Milestone แผนและผลจริง', data: 'แผนแต่ละ milestone วันที่ทำได้จริง และวันที่คาดว่าจะเสร็จที่ผู้ควบคุมงานยืนยัน', src: 'ฝ่ายวิศวกรรม' },
-          { what: 'งานเกินกำหนดและสาเหตุ', data: 'รายการงานที่เลยกำหนด สาเหตุ ผู้รับผิดชอบ และงานถัดไป', src: 'ฝ่ายวิศวกรรม' },
-          { what: 'งบและการใช้งบ', data: 'งบอนุมัติรายโครงการ · เลขที่ PO · ค่าใช้จ่ายที่รับรู้ · สินทรัพย์ที่ตั้งขึ้น · เงินจ่ายจริง (แยกสี่ฐานนี้ออกจากกัน)', src: 'TRCloud (ต้องผูกรหัสโครงการกับเอกสาร) + ฝ่ายบัญชี' },
-          { what: 'Resource Utilization', data: 'กำลังคนที่มี ชั่วโมงที่จัดสรร และชั่วโมงทำงานจริงรายคน/ทีม', src: 'ฝ่ายบุคคล / ระบบลงเวลา' },
-          { what: 'ผลหลังเปิดใช้', data: 'วันเปิดใช้งานจริงของสาขา/อุปกรณ์ เพื่อเทียบยอดขายก่อน–หลัง', src: 'ฝ่ายปฏิบัติการ' }
+        var th = this.__theme(), p = th.p, SS = S.S, self = this, D = S.data.projects;
+        if (!D) return Object.assign(th, { pt: stamp(), pj: { empty: true, emptyMsg: 'ยังไม่มีไฟล์ทะเบียนโครงการ — รัน python3 scripts/import_projects.py', kpis: [], rows: [], insights: [], fin: { cos: [], docs: [] }, cov: { rows: [], excl: [], checks: [] }, sel: null, hasSel: false } });
+        if (SS.pjKind === undefined) SS.pjKind = 'โครงการ';
+        var asof = D.meta.asof, st = this.state || {};
+        var all = D.projects;
+        var list = all.filter(function (x) { return pjInScope(x, SS); })
+          .sort(function (a, b) { return (b.n_over - a.n_over) || (PJ_ST_ORDER[a.status] - PJ_ST_ORDER[b.status]) || a.pid.localeCompare(b.pid); });
+        var ids = new Set(list.map(function (x) { return x.pid; }));
+        var T = D.tasks.filter(function (t) { return ids.has(t.pid); });
+        var proj = list.filter(function (x) { return x.kind === 'โครงการ'; });
+        var cnt = function (f) { return S.fmt(Math.round(proj.filter(f).length * p), 0); };
+        var nProp = list.filter(function (x) { return x.reg !== 'confirmed'; }).length;
+        var regNote = function (f) { var a = proj.filter(f), u = a.filter(function (x) { return x.reg !== 'confirmed'; }).length; return u ? 'รวม ' + u + ' โครงการที่ยังรอยืนยันในทะเบียน' : 'ยืนยันในทะเบียนครบ'; };
+        var over = T.filter(function (t) { return t.overdue; }), nodue = T.filter(function (t) { return t.nodue; });
+        var kpis = [
+          { label: 'โครงการยืนยันแล้ว', value: cnt(function (x) { return x.reg === 'confirmed'; }), unit: 'โครงการ', color: '#1E7A46',
+            note: 'จาก ' + proj.length + ' โครงการในตัวกรอง · ยืนยันโดยเจ้าของโครงการใน config/project_registry.csv' },
+          { label: 'กำลังดำเนินการ', value: cnt(function (x) { return x.status === 'กำลังดำเนินการ' || x.status === 'ยังไม่เริ่ม' || x.status === 'พักไว้'; }), unit: 'โครงการ', color: '#3E4A7C',
+            note: 'รวมยังไม่เริ่ม/พักไว้ · ' + regNote(function (x) { return x.status !== 'เสร็จ' && x.status !== 'ยกเลิก'; }) },
+          { label: 'เสร็จ', value: cnt(function (x) { return x.status === 'เสร็จ'; }), unit: 'โครงการ', color: '#6DC24D',
+            note: 'งานหลักปิดครบ · ในนี้ยังมีงานย่อยค้าง ' + proj.filter(function (x) { return x.status === 'เสร็จ' && x.closed_with_open.length; }).length + ' โครงการ · ยกเลิก ' + proj.filter(function (x) { return x.status === 'ยกเลิก'; }).length + ' โครงการ (แยกจากเสร็จ)' },
+          { label: 'งานเกินกำหนด', value: S.fmt(Math.round(over.length * p), 0), unit: 'งาน', color: over.length ? '#B42318' : '#6DC24D',
+            note: 'ใน ' + list.filter(function (x) { return x.n_over; }).length + ' รายการ · นับทุกระดับงานย่อย' },
+          { label: 'งานไม่มีกำหนดส่ง', value: S.fmt(Math.round(nodue.length * p), 0), unit: 'งาน', color: nodue.length ? '#F5B82E' : '#6DC24D',
+            note: 'งานที่ยังเปิดอยู่แต่ไม่ได้ใส่ due date ใน ClickUp' },
+          { label: 'รายการรอยืนยัน', value: S.fmt(Math.round(nProp * p), 0), unit: 'รายการ', color: nProp ? '#F5B82E' : '#6DC24D',
+            note: 'ทุกประเภทในตัวกรอง · ในจำนวนนี้รอยืนยันบริษัท ' + list.filter(function (x) { return x.co === 'PENDING'; }).length + ' รายการ' }
         ];
-        var proxy = [
-          { title: 'ภาระจัดซื้อและกำหนดจ่าย', body: 'เจ้าหนี้และกำหนดชำระรายเอกสารจาก TRCloud — ใช้ดูภาระเงินจ่ายของงานที่สั่งซื้อไปแล้ว แต่ยังไม่ได้แยกตามโครงการ', href: 'Cash.dc.html', link: 'ไปหน้าเงินทุนหมุนเวียน' },
-          { title: 'สาขาที่ยอดเปลี่ยนแปลงผิดปกติ', body: 'หน้ากลยุทธ์แยกสาขาเดิม สาขาที่เพิ่งมียอด และสาขาที่ไม่มียอดในช่วงนี้ — ใช้ตั้งคำถามกับงานเปิด/ปรับปรุงสาขาได้', href: 'Strategy.dc.html', link: 'ไปหน้ากลยุทธ์' },
-          { title: 'งานเปลี่ยนอุปกรณ์และปรับปรุงสถานี', body: 'ใบงานจากระบบซ่อมบำรุง Factorium มีงานเปลี่ยนอุปกรณ์ ปรับปรุงอาคาร และงานระบบ พร้อมสาขา ผู้รับผิดชอบ และจำนวนวันที่ค้าง — ใช้ติดตามงานหน้างานได้ แต่ยังไม่ใช่ทะเบียนโครงการ', href: 'Maint.dc.html', link: 'ไปหน้าซ่อมบำรุง' },
-          { title: 'ความครบถ้วนของการลงยอดรายสาขา', body: 'สาขาที่ยังลงยอดไม่ครบจะทำให้ตัวเลขก่อน–หลังเปิดใช้งานผิด ตรวจที่หน้าสถานะข้อมูลก่อนสรุปผลโครงการ', href: 'Issues.dc.html', link: 'ไปหน้าสถานะข้อมูล' }
-        ];
-        return Object.assign(th, { pt: stamp(), need: need, proxy: proxy });
+
+        /* ---------- ตาราง ---------- */
+        var stPill = function (s) { return s === 'เสร็จ' ? PILL_OK : s === 'ยกเลิก' || s === 'พักไว้' ? PILL_NA : s === 'ยังไม่เริ่ม' ? PILL_WAIT : PILL(['#E4E7F2', '#3E4A7C']); };
+        var sel = st.pjSel && ids.has(st.pjSel) ? st.pjSel : (list[0] || {}).pid;
+        var rows = list.map(function (x) {
+          var dueLate = x.overdue_project ? pjDays(x.due, asof) : 0;
+          var pct = x.sub_total ? x.sub_done / x.sub_total : 0;
+          return { pid: x.pid, name: x.name, kind: x.kind, reg: x.reg === 'confirmed' ? 'ยืนยันแล้ว' : 'รอยืนยัน', regSt: x.reg === 'confirmed' ? PILL_OK : PILL_WAIT,
+            co: pjCoLabel(x), stations: x.stations.length ? x.stations.map(function (s) { return s.name; }).join(', ') : 'ไม่ระบุสาขา',
+            owner: x.owners.length ? x.owners.join(', ') : 'ไม่ระบุ', status: x.closed_with_open.length ? x.status + ' · งานย่อยค้าง ' + x.closed_with_open.reduce(function (a, c) { return a + c.open.length; }, 0) : x.status, stSt: x.closed_with_open.length ? PILL_WAIT : stPill(x.status),
+            due: x.due ? pjDate(x.due) : 'ไม่มีกำหนด', dueNote: dueLate ? 'เกิน ' + dueLate + ' วัน' : (x.due ? '' : ''), dueSt: 'font-size: 13px; font-weight: 600; color: ' + DOWN,
+            next: x.next ? x.next.name : (x.status === 'เสร็จ' ? 'ปิดครบแล้ว' : '–'), nextDue: x.next ? (x.next.due ? (x.next.overdue ? '⚠ ' : '') + pjDate(x.next.due) : 'ไม่มีกำหนด') : '',
+            nextSt: 'font-size: 13px; color: ' + (x.next && x.next.overdue ? DOWN + '; font-weight: 600' : 'var(--muted)'),
+            sub: x.sub_done + '/' + x.sub_total + ' ' + x.sub_basis, bar: 'height: 6px; border-radius: 3px; background: var(--brand); width: ' + (pct * 100 * p).toFixed(1) + '%',
+            over: x.n_over ? x.n_over + ' งานเกินกำหนด' : '', updated: pjDate(x.updated), url: x.roots.length ? 'https://app.clickup.com/t/' + x.roots[0] : '',
+            rowSt: 'border-bottom: 1px solid var(--line); background: ' + (x.pid === sel ? 'var(--tint)' : 'transparent'),
+            pick: function () { self.setState({ pjSel: x.pid }); } };
+        });
+
+        /* ---------- รายละเอียดโครงการที่เลือก ---------- */
+        var X = list.filter(function (x) { return x.pid === sel; })[0];
+        var F = D.finance.filter(function (f) { return ids.has(f.pid) || (!f.pid && (!SS.pjCo || SS.pjCo === f.co)); });
+        var money = function (v) { return S.fmt(v, 2); };
+        var detail = null;
+        if (X) {
+          var xt = D.tasks.filter(function (t) { return t.pid === X.pid; });
+          var kids = {}; xt.forEach(function (t) { if (t.parent) (kids[t.parent] = kids[t.parent] || []).push(t); });
+          var inX = new Set(xt.map(function (t) { return t.id; })), byDue = function (a, b) { return (a.due || '9').localeCompare(b.due || '9'); };
+          var ordered = [], walk = function (pid, lvl) { (kids[pid] || []).sort(byDue).forEach(function (t) { ordered.push([t, lvl]); walk(t.id, lvl + 1); }); };
+          xt.filter(function (t) { return !inX.has(t.parent); }).sort(byDue).forEach(function (t) { ordered.push([t, 0]); walk(t.id, 1); });
+          var xf = D.finance.filter(function (f) { return f.pid === X.pid; });
+          var fc = X.fin.confirmed, fp = X.fin.proposed;
+          detail = {
+            pid: X.pid, name: X.name, kind: X.kind, deliverable: X.deliverable || '–', co: pjCoLabel(X), type: X.type,
+            stations: X.stations.length ? X.stations.map(function (s) { return s.name + ' (' + s.id + ')'; }).join(', ') : 'ไม่ระบุสาขาใน ClickUp',
+            reg: X.reg === 'confirmed' ? 'ยืนยันแล้ว โดย ' + X.confirmed_by + ' เมื่อ ' + X.confirmed_at : 'รอยืนยัน · เสนอโดย ' + X.proposed_by + ' เมื่อ ' + X.proposed_at,
+            regSt: X.reg === 'confirmed' ? PILL_OK : PILL_WAIT, reason: X.reason, evidence: X.evidence, lists: X.lists.join(' · '),
+            sub: X.sub_total ? S.fmt(X.sub_done / X.sub_total * 100, 0) + '% (' + X.sub_done + '/' + X.sub_total + ' ' + X.sub_basis + ' ไม่นับงานยกเลิก)' : 'ไม่มีงานย่อย',
+            site: X.site.pct == null ? 'ยังไม่มีค่าที่เจ้าของโครงการยืนยัน' : S.fmt(X.site.pct, 0) + '% · ยืนยันโดย ' + X.site.by + ' (' + X.site.at + ')',
+            util: 'ข้อมูลไม่พอ — ClickUp ไม่มีชั่วโมงใช้งานจริงและชั่วโมงที่พร้อมใช้งาน',
+            money: [
+              { label: 'งบอนุมัติ', c: 'ไม่มีในระบบ', p: 'ไม่มีในระบบ', note: 'ช่อง Budget ใน ClickUp ว่าง และเอกสาร TRCloud ไม่มีรหัสโครงการ' },
+              { label: 'มูลค่า PO / ภาระผูกพัน (ก่อน VAT)', c: money(fc.po), p: money(fp.po), note: 'จาก PO ที่จับคู่' },
+              { label: 'ยอดบันทึกบัญชี AP (ก่อน VAT)', c: money(fc.booked), p: money(fp.booked), note: 'AP ที่อ้างเลข PO — ไม่บวกซ้ำกับ PO' },
+              { label: 'จ่ายแล้ว (รวม VAT ตาม AP)', c: money(fc.paid), p: money(fp.paid), note: 'ช่อง payment ของ AP' },
+              { label: 'ภาระคงเหลือ = PO − AP', c: money(fc.open), p: money(fp.open), note: 'ยังไม่ตั้งหนี้' }],
+            docs: xf.map(function (f) { return { doc: f.co + ' · ' + f.doc, date: pjDate(f.date), po: money(f.po), booked: money(f.booked), paid: money(f.paid),
+              aps: f.aps.length ? f.aps.join(', ') : 'ยังไม่มี AP', status: f.status === 'confirmed' ? 'ยืนยันแล้ว' : 'คู่ที่เสนอ', stSt: f.status === 'confirmed' ? PILL_OK : PILL_WAIT, evidence: f.evidence, cls: f.cls }; }),
+            hasDocs: xf.length > 0, noDocs: xf.length ? '' : 'ยังไม่พบเอกสาร PO/AP/EXP ใน TRCloud ที่จับคู่กับรายการนี้',
+            tasks: ordered.map(function (o) { var t = o[0]; return { name: t.name, ind: 'padding: 8px 10px 8px ' + (10 + o[1] * 18) + 'px; border-bottom: 1px solid var(--line)' + (o[1] ? '' : '; font-weight: 600'),
+              status: CU_ST[t.status] || t.status, stSt: t.status === 'complete' ? PILL_OK : t.status === 'cancelled' ? PILL_NA : t.overdue ? PILL_BAD : PILL_WAIT,
+              due: t.due ? pjDate(t.due) + (t.overdue ? ' · เกิน ' + pjDays(t.due, asof) + ' วัน' : '') : (t.status === 'complete' || t.status === 'cancelled' ? '–' : 'ไม่มีกำหนด'),
+              dueSt: 'padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; ' + (t.overdue ? 'color: ' + DOWN + '; font-weight: 600' : 'color: var(--muted)'),
+              owner: t.owners.join(', ') || '–', note: t.remark || t.note || '', url: t.url }; }),
+            url: X.roots.length ? 'https://app.clickup.com/t/' + X.roots[0] : ''
+          };
+        }
+
+        /* ---------- Insight (ตรวจสอบได้ พร้อมหลักฐาน) ---------- */
+        var ins = [], link = function (t) { return { label: t.name, href: t.url }; };
+        var od = list.filter(function (x) { return x.n_over; });
+        if (od.length) ins.push({ title: 'Milestone เกินกำหนด', fig: od.reduce(function (s, x) { return s + x.n_over; }, 0) + ' งาน · ' + od.length + ' รายการ',
+          body: od.slice(0, 4).map(function (x) { var t = T.filter(function (t) { return t.pid === x.pid && t.overdue; }).sort(function (a, b) { return a.due.localeCompare(b.due); })[0];
+            return x.pid + ' ' + x.name + (x.stations.length ? ' (' + x.stations.map(function (s) { return s.name; }).join(', ') + ')' : '') + ': "' + t.name + '" กำหนด ' + pjDate(t.due) + ' เกิน ' + pjDays(t.due, asof) + ' วัน'; }).join(' · '),
+          links: od.slice(0, 4).map(function (x) { return link(T.filter(function (t) { return t.pid === x.pid && t.overdue; }).sort(function (a, b) { return a.due.localeCompare(b.due); })[0]); }) });
+        var cwo = list.filter(function (x) { return x.closed_with_open.length; });
+        if (cwo.length) ins.push({ title: 'งานหลักปิดแล้ว แต่งานย่อยยังเปิดอยู่', fig: cwo.reduce(function (s, x) { return s + x.closed_with_open.reduce(function (a, c) { return a + c.open.length; }, 0); }, 0) + ' งานย่อย',
+          body: cwo.map(function (x) { return x.closed_with_open.map(function (c) { return x.pid + ' "' + c.name + '" ปิดแล้ว แต่ยังเปิด: ' + c.open.join(', '); }).join(' · '); }).join(' · ') + ' — ควรให้เจ้าของงานปิดหรือย้ายงานย่อยให้สถานะตรงกับหน้างาน',
+          links: cwo.map(function (x) { return { label: x.pid + ' ใน ClickUp', href: 'https://app.clickup.com/t/' + x.closed_with_open[0].id }; }) });
+        var unl = F.filter(function (f) { return f.status === 'unlinked'; });
+        if (unl.length) ins.push({ title: 'เอกสารลงทุน/ปรับปรุงที่ยังไม่ระบุโครงการ', fig: unl.length + ' PO · ' + S.mb(unl.reduce(function (s, f) { return s + f.po; }, 0)) + ' (ก่อน VAT)',
+          body: 'PO ผู้รับเหมาปรับปรุงสถานีใน TRCloud ' + unl.map(function (f) { return f.doc; }).slice(0, 8).join(', ') + (unl.length > 8 ? ' และอีก ' + (unl.length - 8) + ' ฉบับ' : '') + ' ไม่มีรหัสโครงการและไม่มีงาน ClickUp ที่ตรงสาขา — ฝ่ายบัญชี/วิศวกรรมควรระบุโครงการหรือยืนยันว่าเป็นงานซ่อมบำรุง',
+          links: [] });
+        var prop = F.filter(function (f) { return f.status === 'proposed' && ids.has(f.pid); });
+        if (prop.length) ins.push({ title: 'คู่เอกสาร–โครงการที่รอบัญชียืนยัน', fig: prop.length + ' PO · ' + S.mb(prop.reduce(function (s, f) { return s + f.po; }, 0)),
+          body: prop.map(function (f) { return f.doc + ' → ' + f.pid + ' (' + f.evidence + ')'; }).join(' · ') + ' — ยังไม่รวมเข้ายอดโครงการจนกว่าจะยืนยัน', links: [] });
+        var nd = list.filter(function (x) { return x.n_nodue && x.status !== 'เสร็จ'; });
+        if (nd.length) ins.push({ title: 'งานที่ยังเปิดแต่ไม่มีกำหนดส่ง', fig: nd.reduce(function (s, x) { return s + x.n_nodue; }, 0) + ' งาน',
+          body: nd.map(function (x) { return x.pid + ' ' + x.n_nodue + ' งาน'; }).join(' · ') + ' — ติดตามความล่าช้าไม่ได้จนกว่าจะใส่ due date', links: nd.slice(0, 3).map(function (x) { var t = T.filter(function (t) { return t.pid === x.pid && t.nodue; })[0]; return link(t); }) });
+        var dup = list.filter(function (x) { return /ซ้ำ/.test(x.reason); });
+        if (dup.length) ins.push({ title: 'รวมงานชื่อซ้ำแล้ว ไม่นับซ้ำ', fig: dup.length + ' รายการ', body: dup.map(function (x) { return x.pid + ': ' + x.reason; }).join(' · '), links: [] });
+        var insights = ins.map(function (i, k) { i.n = k + 1; i.hasLinks = i.links.length > 0; return i; });
+
+        /* ---------- เงินตามบริษัทที่ลงบัญชี ---------- */
+        var cos = ['STG', 'STP', 'TWP'].map(function (co) {
+          var r = F.filter(function (f) { return f.co === co; }), tr = (D.coverage.trcloud || {})[co] || {};
+          var sm = function (k, s) { return r.filter(function (f) { return f.status === s; }).reduce(function (a, f) { return a + f[k]; }, 0); };
+          return { co: co, chip: chip(co), status: tr.status === 'ok' ? 'โหลดสำเร็จ' : 'โหลดไม่สำเร็จ', stSt: tr.status === 'ok' ? PILL_OK : PILL_BAD,
+            fetched: tr.fetched_at ? tr.fetched_at.slice(0, 16).replace('T', ' ') : '–',
+            conf: money(sm('po', 'confirmed')), prop: money(sm('po', 'proposed')), unl: money(sm('po', 'unlinked')), booked: money(sm('booked', 'proposed') + sm('booked', 'confirmed') + sm('booked', 'unlinked')),
+            n: r.length ? r.length + ' เอกสาร' : 'ไม่พบเอกสารที่เกี่ยวกับโครงการ' };
+        });
+        var STL = { confirmed: 'ยืนยันแล้ว', proposed: 'คู่ที่เสนอ', unlinked: 'ยังไม่เชื่อม', not_relevant: 'ไม่เกี่ยวข้อง' };
+        var docs = F.map(function (f) { return { co: f.co, doc: f.doc, date: pjDate(f.date), note: f.note, pid: f.pid || '–', status: STL[f.status], cls: f.cls,
+          stSt: f.status === 'confirmed' ? PILL_OK : f.status === 'proposed' ? PILL_WAIT : f.status === 'unlinked' ? PILL_BAD : PILL_NA,
+          po: money(f.po), booked: money(f.booked), paid: money(f.paid), open: money(f.open) }; });
+
+        /* ---------- ความครอบคลุมของข้อมูล ---------- */
+        var cv = D.coverage, cu = cv.clickup;
+        var covRows = [{ src: 'ClickUp · Space ' + cu.space, at: cu.fetched_at.slice(0, 16).replace('T', ' '), st: 'โหลดสำเร็จ', stSt: PILL_OK,
+          note: cu.raw + ' รายการ (ตัดซ้ำ ' + cu.dups + ') · ในขอบเขต ' + cu.in_scope + ' · นอกขอบเขต ' + cu.excluded + ' · ยังไม่ผูก Project ID ' + cu.unmapped + ' · ' + cu.note }]
+          .concat(['STG', 'STP', 'TWP'].map(function (co) { var t = cv.trcloud[co] || {}; return { src: 'TRCloud ' + co, at: t.fetched_at ? t.fetched_at.slice(0, 16).replace('T', ' ') : '–',
+            st: t.status === 'ok' ? 'โหลดสำเร็จ' : 'โหลดไม่สำเร็จ', stSt: t.status === 'ok' ? PILL_OK : PILL_BAD, note: 'PO ' + (t.po || 0) + ' · AP ' + (t.ap || 0) + ' · ' + (t.queries || []).join(' · ') }; }));
+        var byCo = Object.keys(cu.by_company).map(function (k) { return (PJ_CO[k] || k) + ' ' + cu.by_company[k]; }).join(' · ');
+
+        var csvProj = function () { S.csv('STAR_ทะเบียนโครงการ.csv', ['Project ID', 'ประเภท', 'ชื่อ', 'บริษัท', 'สาขา', 'เจ้าของ', 'สถานะ', 'กำหนดส่ง', 'milestone ถัดไป', 'กำหนด milestone', 'งานย่อยเสร็จ', 'งานย่อยทั้งหมด', 'งานเกินกำหนด', 'งานไม่มีกำหนด', 'อัปเดตล่าสุด', 'ทะเบียน', 'ผู้ยืนยัน', 'วันที่ยืนยัน', 'เหตุผล', 'หลักฐาน', 'PO คู่ที่เสนอ', 'PO ยืนยันแล้ว', 'ลิงก์ ClickUp', 'วันอ้างอิง'],
+          list.map(function (x) { return [x.pid, x.kind, x.name, pjCoLabel(x), x.stations.map(function (s) { return s.name; }).join(' / '), x.owners.join(' / '), x.status, x.due || '', x.next ? x.next.name : '', x.next && x.next.due || '',
+            x.sub_done, x.sub_total, x.n_over, x.n_nodue, x.updated || '', x.reg, x.confirmed_by || '', x.confirmed_at || '', x.reason, x.evidence, x.fin.proposed.po.toFixed(2), x.fin.confirmed.po.toFixed(2),
+            x.roots.length ? 'https://app.clickup.com/t/' + x.roots[0] : '', asof]; })); };
+        var csvTasks = function () { S.csv('STAR_งานโครงการ.csv', ['Project ID', 'Task ID', 'งาน', 'List', 'งานแม่', 'สถานะ', 'กำหนดส่ง', 'เกินกำหนด', 'ไม่มีกำหนด', 'ผู้รับผิดชอบ', 'อัปเดตล่าสุด', 'ลิงก์', 'วันอ้างอิง'],
+          T.map(function (t) { return [t.pid, t.id, t.name, t.list, t.parent || '', CU_ST[t.status] || t.status, t.due || '', t.overdue ? 'ใช่' : '', t.nodue ? 'ใช่' : '', t.owners.join(' / '), t.updated || '', t.url, asof]; })); };
+        var csvDocs = function () { S.csv('STAR_เอกสารเงินโครงการ.csv', ['บริษัทที่ลงบัญชี', 'ประเภท', 'เลขที่', 'Line', 'วันที่', 'รายละเอียด', 'Project ID', 'สัดส่วน %', 'สถานะการจับคู่', 'ประเภทต้นทุน', 'PO ก่อน VAT', 'AP ก่อน VAT', 'จ่ายแล้ว (รวม VAT)', 'ภาระคงเหลือ', 'AP ที่อ้าง PO', 'หลักฐาน', 'ผู้ยืนยัน', 'วันที่ยืนยัน'],
+          F.map(function (f) { return [f.co, f.type, f.doc, f.line, f.date, f.note, f.pid || '', f.pct, STL[f.status], f.cls, f.po.toFixed(2), f.booked.toFixed(2), f.paid.toFixed(2), f.open.toFixed(2), f.aps.join(' / '), f.evidence, f.cby || '', f.cat || '']; })); };
+
+        return Object.assign(th, { pt: { stamp: 'ClickUp ดึง ' + pjDate(cu.fetched_at.slice(0, 10)) + ' ' + cu.fetched_at.slice(11, 16) + ' · TRCloud (เอกสารจัดซื้อ) ' + ['STG', 'STP', 'TWP'].map(function (c) { var t = cv.trcloud[c] || {}; return c + ' ' + (t.fetched_at ? pjDate(t.fetched_at.slice(0, 10)) + ' ' + t.fetched_at.slice(11, 16) : 'ไม่มีข้อมูล'); }).join(' · ') + ' · เวลาไทย' }, pj: {
+          empty: false, asof: pjDate(asof), kpis: kpis, rows: rows, hasRows: rows.length > 0, noRows: rows.length ? '' : 'ไม่มีรายการตามตัวกรอง',
+          tableSub: list.length + ' รายการ · เรียงตามจำนวนงานเกินกำหนด แล้วตามสถานะ · กดแถวเพื่อดูรายละเอียดและยอดเงิน',
+          banner: nProp ? 'ทะเบียนนี้ยังเป็นฉบับเสนอ: ' + nProp + ' จาก ' + list.length + ' รายการในตัวกรองรอเจ้าของโครงการยืนยัน — KPI "ยืนยันแล้ว" นับเฉพาะรายการที่มีผู้ยืนยันและวันที่ยืนยันในทะเบียน' : '',
+          hasBanner: nProp > 0, sel: detail, hasSel: !!detail,
+          insights: insights, hasInsights: insights.length > 0,
+          fin: { cos: cos, docs: docs, hasDocs: docs.length > 0, note: 'ยอดกลุ่มเป็นผลรวมตามเอกสารของแต่ละบริษัท ยังไม่ผ่านการตัดรายการระหว่างบริษัท · ประเภทต้นทุน (สินทรัพย์/งานระหว่างก่อสร้าง/ค่าใช้จ่าย) รอฝ่ายบัญชีระบุ · รวมเข้ายอดโครงการเฉพาะคู่ที่ยืนยันแล้ว' },
+          cov: { rows: covRows, byCo: 'บริษัทเจ้าของจากทะเบียน (ทุกประเภท): ' + byCo, finding: cv.trcloud_finding,
+            excl: D.excluded.map(function (e) { return { name: e.name, n: e.n + ' งาน', reason: e.reason, by: e.by + ' · ' + e.at }; }),
+            checks: D.checks.length ? D.checks : ['ผ่าน: ไม่มี Task ID ซ้ำ · ทุกงานในขอบเขตผูก Project ID แล้ว · จัดสรรเอกสารไม่เกิน 100% · AP ไม่เกินมูลค่า PO'] },
+          csvProj: csvProj, csvTasks: csvTasks, csvDocs: csvDocs } });
       }
     };
   };

@@ -255,8 +255,8 @@
   function fail(msg) { root.innerHTML = ''; var d = document.createElement('div'); d.className = 'dc-err'; d.textContent = msg; root.appendChild(d); }
 
   if (window.DASH_STATIC) window.DASHApp = { start: function (b) { try { start(b); } catch (e) { console.error(e); fail('แสดงหน้า Dashboard ไม่สำเร็จ: ' + e.message); } } };
-  else Promise.all(['pages', 'model', 'station_pl', 'wc', 'stock', 'lpg', 'maint', 'ops', 'yoy'].map(function (n) {
+  else Promise.all(['pages', 'model', 'station_pl', 'wc', 'stock', 'lpg', 'maint', 'ops', 'yoy', 'projects'].map(function (n) {
       return fetch('../data/' + n + '.json', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(n + ' HTTP ' + r.status); return r.json(); });
-    })).then(function (a) { start({ ds: { pages: a[0], model: a[1], station_pl: a[2], wc: a[3], stock: a[4], lpg: a[5], maint: a[6], ops: a[7], yoy: a[8] } }); })
+    })).then(function (a) { start({ ds: { pages: a[0], model: a[1], station_pl: a[2], wc: a[3], stock: a[4], lpg: a[5], maint: a[6], ops: a[7], yoy: a[8], projects: a[9] } }); })
     .catch(function (e) { fail('โหลดข้อมูลไม่สำเร็จ (' + e.message + ') — รัน node scripts/build_pages.js ก่อน'); });
 })();
